@@ -71,11 +71,17 @@ LEGACY_ALIASES = {
     "fg": "foreground", "dark_fg": "dark_foreground",
     "light_fg": "light_foreground", "bright_fg": "bright_foreground",
 }
-RAMP = [
+RAMP_DARK = [
     "darker_background", "dark_background", "background",
     "lighter_background", "selection",
 ]
-FG_LADDER = ["muted", "dark_foreground", "foreground", "light_foreground", "bright_foreground"]
+FG_LADDER_DARK = ["muted", "dark_foreground", "foreground", "light_foreground", "bright_foreground"]
+# Light themes: current Omarchy stock themes do NOT share one fixed semantic-key
+# order (catppuccin-latte/flexoki-light put dark before lighter; lupine/rose-pine
+# the reverse; `white` even ties selection and lighter_background). The upstream
+# preview (omarchy-dev-theme-preview) sorts neutral entries by luminance. The
+# validator therefore checks luminance RELATIONSHIPS instead of key order:
+SURFACE_KEYS = ["background", "dark_background", "darker_background", "lighter_background", "selection"]
 BG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 # This repository's own policy. Omarchy (quattro) drops code-capable files
@@ -616,13 +622,25 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
         rep.error(f"accent contrast {acc_r:.2f}:1 < 3:1")
     rep.note(f"foreground {fg_r:.2f}:1, accent {acc_r:.2f}:1 vs background")
 
-    order = RAMP + FG_LADDER
+    order = RAMP_DARK + FG_LADDER_DARK
     lums = {k: luminance(data[k]) for k in order}
     seq = [lums[k] for k in order]
     if mode == "dark" and any(b < a for a, b in zip(seq, seq[1:])):
         rep.error("neutral ramp not monotonic (dark: must rise darker_background -> bright_foreground)")
-    if mode == "light" and any(b > a for a, b in zip(seq, seq[1:])):
-        rep.error("neutral ramp not monotonic (light: must fall darker_background -> bright_foreground)")
+    if mode == "light":
+        # Relationship checks (no key ordering imposed): background must be the
+        # lightest surface, muted must sit between the surfaces and the primary
+        # foregrounds, and the primary foregrounds must be darker than every
+        # surface. Satisfied by every current Omarchy stock light theme.
+        surf = [lums[k] for k in SURFACE_KEYS]
+        if lums["background"] < max(surf):
+            rep.error("light theme: background must be the lightest surface stop")
+        if lums["muted"] > min(surf):
+            rep.error("light theme: muted must be darker than every surface stop")
+        if lums["muted"] < max(lums["foreground"], lums["bright_foreground"]):
+            rep.error("light theme: muted must be lighter than foreground/bright_foreground")
+        if min(lums["foreground"], lums["bright_foreground"]) > min(surf):
+            rep.error("light theme: foreground/bright_foreground must be darker than every surface stop")
 
     sel_r = contrast(data["bright_foreground"], data["selection"])
     if sel_r < 3.0:
