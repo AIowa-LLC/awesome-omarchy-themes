@@ -1,0 +1,24 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned validator dependencies
+        run: python3 -m pip install -r requirements-validator.txt
+      - name: Validator regression tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Run repository validator
+        run: python3 scripts/validate.py

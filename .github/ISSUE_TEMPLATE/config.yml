@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Omarchy documentation
-    url: https://github.com/basecamp/omarchy/blob/quattro/docs/theming.md
+    url: https://github.com/omacom/omarchy/blob/quattro/docs/theming.md
     about: Official theming reference — palette keys and staging behavior.
