@@ -138,10 +138,13 @@ PNG_SIG = b"\x89PNG\r\n\x1a\n"
 
 
 def _png_info(data: bytes, require_complete: bool = True) -> tuple[int, int]:
-    """Walk PNG chunks; return (width, height). ValueError on any defect."""
+    """Walk PNG chunks. A valid PNG requires: signature, IHDR first (exactly
+    one), >=1 non-empty IDAT, IEND last (exactly one); CRCs verified."""
     if not data.startswith(PNG_SIG):
         raise ValueError("bad PNG signature")
-    pos, seen_ihdr, width, height = 8, False, 0, 0
+    pos, width, height = 8, 0, 0
+    saw_ihdr = saw_idat = saw_iend = False
+    first = True
     while pos < len(data):
         if pos + 8 > len(data):
             raise ValueError("truncated PNG (chunk header cut)")
@@ -155,21 +158,39 @@ def _png_info(data: bytes, require_complete: bool = True) -> tuple[int, int]:
         crc = int.from_bytes(data[pos + 8 + length:pos + 12 + length], "big")
         if zlib.crc32(ctype + body) & 0xFFFFFFFF != crc:
             raise ValueError(f"PNG chunk {ctype!r} failed CRC")
+        if first and ctype != b"IHDR":
+            raise ValueError("PNG first chunk must be IHDR")
+        first = False
         if ctype == b"IHDR":
+            if saw_ihdr:
+                raise ValueError("PNG has duplicate IHDR")
             if length != 13:
                 raise ValueError("bad IHDR length")
             width, height = int.from_bytes(body[0:4], "big"), int.from_bytes(body[4:8], "big")
-            seen_ihdr = True
-        pos += 12 + length
-        if ctype == b"IEND":
-            if not seen_ihdr:
-                raise ValueError("PNG has IEND but no IHDR")
+            saw_ihdr = True
             if width <= 0 or height <= 0:
                 raise ValueError("PNG has non-positive dimensions")
+        elif ctype == b"IDAT":
+            if not saw_ihdr:
+                raise ValueError("PNG IDAT before IHDR")
+            if length == 0:
+                raise ValueError("PNG has an empty IDAT chunk")
+            saw_idat = True
+        elif ctype == b"IEND":
+            if not saw_ihdr:
+                raise ValueError("PNG IEND before IHDR")
+            if saw_iend:
+                raise ValueError("PNG has duplicate IEND")
+            if not saw_idat:
+                raise ValueError("PNG has no IDAT image data")
+            if pos + 12 + length != len(data):
+                raise ValueError("PNG IEND is not the final chunk")
+            saw_iend = True
             return width, height
+        pos += 12 + length
     if require_complete:
         raise ValueError("truncated PNG (no IEND)")
-    if not seen_ihdr:
+    if not saw_ihdr:
         raise ValueError("PNG missing IHDR")
     if width <= 0 or height <= 0:
         raise ValueError("PNG has non-positive dimensions")
@@ -177,10 +198,12 @@ def _png_info(data: bytes, require_complete: bool = True) -> tuple[int, int]:
 
 
 def _jpeg_info(data: bytes) -> tuple[int, int]:
-    """Walk JPEG segments; require SOS and a following EOI for completeness."""
+    """Walk JPEG segments. A valid JPEG requires: SOI, a frame header with
+    positive dimensions, >=1 SOS followed by real scan entropy bytes, and an
+    EOI after the scan."""
     if len(data) < 4 or data[0:2] != b"\xff\xd8":
         raise ValueError("bad JPEG signature")
-    pos, width, height, saw_sof = 2, 0, 0, False
+    pos, width, height, saw_sof, saw_sos = 2, 0, 0, False, False
     while pos + 2 <= len(data):
         if data[pos] != 0xFF:
             raise ValueError("corrupt JPEG (missing marker prefix)")
@@ -191,8 +214,8 @@ def _jpeg_info(data: bytes) -> tuple[int, int]:
         if marker == 0xD9:  # EOI
             if not saw_sof:
                 raise ValueError("JPEG EOI before any frame header")
-            if width <= 0 or height <= 0:
-                raise ValueError("JPEG has non-positive dimensions")
+            if not saw_sos:
+                raise ValueError("JPEG EOI before any scan data (no SOS)")
             return width, height
         if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # standalone markers
             pos += 2
@@ -212,12 +235,24 @@ def _jpeg_info(data: bytes) -> tuple[int, int]:
             saw_sof = True
             if width <= 0 or height <= 0:
                 raise ValueError("JPEG has non-positive dimensions")
-        if marker == 0xDA:  # SOS: scan data follows until a real marker
+        if marker == 0xDA:  # SOS: scan entropy data follows
+            if not saw_sof:
+                raise ValueError("JPEG SOS before any frame header")
             scan = pos + 2 + seglen
+            entropy = 0
             while scan + 1 < len(data):
-                if data[scan] == 0xFF and data[scan + 1] not in (0x00,) and not (0xD0 <= data[scan + 1] <= 0xD7):
-                    break  # candidate segment marker inside/after scan
+                b0, b1 = data[scan], data[scan + 1]
+                # a real marker: FF not followed by 0x00 (stuffed byte) or a
+                # restart marker (which can appear inside scan data)
+                if b0 == 0xFF and b1 != 0x00 and not (0xD0 <= b1 <= 0xD7):
+                    break
+                entropy += 1
                 scan += 1
+            if entropy == 0:
+                raise ValueError("JPEG SOS with no scan entropy data")
+            if scan + 2 > len(data):
+                raise ValueError("truncated JPEG (scan runs to EOF, no EOI)")
+            saw_sos = True
             pos = scan
             continue
         pos += 2 + seglen
@@ -225,7 +260,10 @@ def _jpeg_info(data: bytes) -> tuple[int, int]:
 
 
 def _gif_info(data: bytes) -> tuple[int, int]:
-    """Walk GIF blocks; require an image descriptor and the 0x3B trailer."""
+    """Walk GIF blocks. A valid GIF requires: header with positive dims, a
+    complete global-color-table/header region, >=1 image descriptor whose
+    data sub-block chain contains at least one non-empty block (real LZW
+    image data), and the 0x3B trailer."""
     if len(data) < 13 or data[0:6] not in (b"GIF87a", b"GIF89a"):
         raise ValueError("bad GIF signature")
     w = int.from_bytes(data[6:8], "little")
@@ -259,8 +297,13 @@ def _gif_info(data: bytes) -> tuple[int, int]:
                 pos += 3 * (2 ** ((iflags & 0x07) + 1))
             if pos >= len(data):
                 raise ValueError("truncated GIF (local color table cut)")
-            pos += 1  # LZW minimum code size
-            pos = _gif_skip_subblocks(data, pos)
+            lzw_min = data[pos]
+            if lzw_min < 1 or lzw_min > 11:
+                raise ValueError(f"GIF has nonsensical LZW minimum code size {lzw_min}")
+            pos += 1
+            data_bytes, pos = _gif_read_subblocks(data, pos)
+            if data_bytes == 0:
+                raise ValueError("GIF image has no LZW data (empty sub-block chain)")
             saw_image = True
         else:
             raise ValueError(f"corrupt GIF (unknown block introducer 0x{b:02x})")
@@ -277,6 +320,21 @@ def _gif_skip_subblocks(data: bytes, pos: int) -> int:
         if pos > len(data):
             raise ValueError("truncated GIF (sub-block cut)")
     raise ValueError("truncated GIF (unterminated sub-block chain)")
+
+
+def _gif_read_subblocks(data: bytes, pos: int) -> tuple[int, int]:
+    """Read an image-data sub-block chain; return (data_bytes, end_pos)."""
+    total = 0
+    while pos < len(data):
+        size = data[pos]
+        pos += 1
+        if size == 0:
+            return total, pos
+        total += size
+        pos += size
+        if pos > len(data):
+            raise ValueError("truncated GIF (image data sub-block cut)")
+    raise ValueError("truncated GIF (unterminated image data chain)")
 
 
 def _bmp_info(data: bytes) -> tuple[int, int]:
@@ -313,7 +371,11 @@ def _bmp_info(data: bytes) -> tuple[int, int]:
 
 
 def _webp_info(data: bytes) -> tuple[int, int]:
-    """Walk RIFF chunks; verify declared sizes/padding and payload bounds."""
+    """Walk RIFF chunks. A valid WebP requires a real image bitstream: a
+    VP8 (lossy) or VP8L (lossless) chunk, or — for animation (VP8X) — an
+    ANMF frame whose payload contains a frame bitstream. VP8X/ANMF metadata
+    alone is not image data. Declared sizes, odd-chunk padding, and chunk
+    bounds are all enforced."""
     if len(data) < 12 or data[0:4] != b"RIFF" or data[8:12] != b"WEBP":
         raise ValueError("bad WEBP signature")
     riff_size = int.from_bytes(data[4:8], "little")
@@ -323,6 +385,9 @@ def _webp_info(data: bytes) -> tuple[int, int]:
     if riff_end > len(data):
         raise ValueError("truncated WEBP (RIFF size exceeds file)")
     pos, width, height = 12, 0, 0
+    has_vp8 = has_vp8l = False
+    anmf_ranges: list[tuple[int, int]] = []  # payload spans of ANMF chunks
+    last_body_end, last_clen = 0, 0
     while pos + 8 <= riff_end:
         ctype = data[pos:pos + 4]
         clen = int.from_bytes(data[pos + 4:pos + 8], "little")
@@ -330,6 +395,7 @@ def _webp_info(data: bytes) -> tuple[int, int]:
         body_end = body_start + clen
         if body_end > riff_end:
             raise ValueError("truncated WEBP (chunk exceeds RIFF bounds)")
+        last_body_end, last_clen = body_end, clen
         body = data[body_start:body_end]
         if ctype == b"VP8X" and len(body) >= 10:
             width = (int.from_bytes(body[4:7], "little") & 0xFFFFFF) + 1
@@ -340,21 +406,46 @@ def _webp_info(data: bytes) -> tuple[int, int]:
                 raise ValueError("corrupt WEBP (bad VP8 sync code)")
             width = int.from_bytes(body[6:8], "little") & 0x3FFF
             height = int.from_bytes(body[8:10], "little") & 0x3FFF
+            has_vp8 = True
         elif ctype == b"VP8L" and len(body) >= 5:
             if body[0] != 0x2f:
                 raise ValueError("corrupt WEBP (bad VP8L signature)")
             bits = int.from_bytes(body[1:5], "little")
             width = (bits & 0x3FFF) + 1
             height = ((bits >> 14) & 0x3FFF) + 1
-        elif ctype == b"ANMF" and len(body) >= 16 and width == 0:
-            width = (int.from_bytes(body[6:9], "little") & 0xFFFFFF) + 1
-            height = (int.from_bytes(body[9:12], "little") & 0xFFFFFF) + 1
+            has_vp8l = True
+        elif ctype == b"ANMF" and len(body) >= 16:
+            anmf_ranges.append((body_start + 16, body_end))
         pos = body_end + (clen & 1)  # chunks are padded to even sizes
+    if last_clen & 1 and last_body_end + 1 > riff_end:
+        raise ValueError("WEBP chunk is missing its required odd-byte padding")
     if pos < riff_end and riff_end - pos > 1:
         raise ValueError("truncated WEBP (unparsed trailing bytes inside RIFF)")
+    if not (has_vp8 or has_vp8l):
+        # animated path: every ANMF frame payload must contain a frame
+        # bitstream chunk (VP8 / VP8L) — not just frame metadata
+        if not anmf_ranges:
+            raise ValueError("WEBP has no image bitstream (VP8X metadata only)")
+        for start, end in anmf_ranges:
+            if not _webp_frame_has_bitstream(data, start, end):
+                raise ValueError("WEBP ANMF frame has no VP8/VP8L bitstream")
     if width <= 0 or height <= 0:
         raise ValueError("WEBP has no frame with positive dimensions")
     return width, height
+
+
+def _webp_frame_has_bitstream(data: bytes, start: int, end: int) -> bool:
+    """True if the ANMF payload region contains a VP8/VP8L chunk."""
+    pos = start
+    while pos + 8 <= end:
+        ctype = data[pos:pos + 4]
+        clen = int.from_bytes(data[pos + 4:pos + 8], "little")
+        if clen < 0 or pos + 8 + clen > end:
+            return False
+        if ctype in (b"VP8 ", b"VP8L"):
+            return True
+        pos += 8 + clen + (clen & 1)
+    return False
 
 
 def probe_image(data: bytes, ext: str) -> tuple[str, int, int]:

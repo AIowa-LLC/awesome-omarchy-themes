@@ -44,31 +44,48 @@ BASELINE = {
 }
 
 
-def png_bytes(width: int, height: int, *, complete: bool = True, bad_crc: bool = False) -> bytes:
-    """Minimal structurally-valid PNG (or deliberately broken)."""
+def png_bytes(width: int, height: int, *, complete: bool = True, bad_crc: bool = False,
+              with_idat: bool = True, idat_first: bool = True, dup_ihdr: bool = False) -> bytes:
+    """Minimal genuinely-valid PNG (IHDR + IDAT + IEND), or deliberately broken."""
     def chunk(ctype: bytes, data: bytes, corrupt: bool = False) -> bytes:
         crc = (zlib.crc32(ctype + data) & 0xFFFFFFFF) ^ (1 if corrupt else 0)
         return struct.pack(">I", len(data)) + ctype + data + struct.pack(">I", crc)
 
     ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    # real (zlib-compressed) scanline data: filter byte + raw RGB rows
+    raw = b"".join(b"\x00" + b"\x80\x60\x30" * width for _ in range(min(height, 4)))
+    idat = chunk(b"IDAT", zlib.compress(raw))
     iend = chunk(b"IEND", b"")
-    body = b"\x89PNG\r\n\x1a\n" + ihdr + iend
+
+    if dup_ihdr:
+        body = b"\x89PNG\r\n\x1a\n" + ihdr + ihdr + idat + iend
+    elif not idat_first:
+        body = b"\x89PNG\r\n\x1a\n" + idat + ihdr + iend
+    elif not with_idat:
+        body = b"\x89PNG\r\n\x1a\n" + ihdr + iend
+    else:
+        body = b"\x89PNG\r\n\x1a\n" + ihdr + idat + iend
     if bad_crc:
         ihdr_bad = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0), corrupt=True)
-        body = b"\x89PNG\r\n\x1a\n" + ihdr_bad + iend
+        body = b"\x89PNG\r\n\x1a\n" + ihdr_bad + idat + iend
     if not complete:
-        body = b"\x89PNG\r\n\x1a\n" + ihdr  # header only, no IEND
+        body = b"\x89PNG\r\n\x1a\n" + ihdr + idat  # no IEND
     return body
 
 
-def jpeg_bytes(width: int, height: int) -> bytes:
-    """Minimal JPEG: SOI + APP0 + SOF0 with dimensions + EOI."""
+def jpeg_bytes(width: int, height: int, *, with_scan: bool = True, empty_scan: bool = False) -> bytes:
+    """Minimal JPEG: SOI + SOF0 + (SOS + entropy) + EOI, or deliberately broken."""
     sof = struct.pack(">HH", height, width) + b"\x03\x01\x11\x00"
     parts = [
         b"\xff\xd8",                                        # SOI
         b"\xff\xc0" + struct.pack(">H", 2 + len(sof)) + sof,  # SOF0
-        b"\xff\xd9",                                        # EOI
     ]
+    if with_scan:
+        sos_body = b"\x01" + bytes([1, 0x00, 0x00])  # 1 component, id 1, DC/AC table 0
+        parts.append(b"\xff\xda" + struct.pack(">H", 2 + len(sos_body)) + sos_body)
+        if not empty_scan:
+            parts.append(b"\x80\x60\x30" * 8 + b"\x55" * 4)  # entropy bytes
+    parts.append(b"\xff\xd9")                              # EOI
     return b"".join(parts)
 
 
@@ -94,7 +111,8 @@ def real_image(kind: str) -> bytes:
     return base64.b64decode({"jpeg": JPEG_B64, "gif": GIF_B64, "bmp": BMP_B64, "webp": WEBP_B64}[kind])
 
 
-def gif_bytes(w: int = 4, h: int = 4, *, complete: bool = True, with_image: bool = True) -> bytes:
+def gif_bytes(w: int = 4, h: int = 4, *, complete: bool = True, with_image: bool = True,
+              empty_data: bool = False) -> bytes:
     """Structural GIF for negative tests (header/table/walk defects)."""
     header = b"GIF89a" + w.to_bytes(2, "little") + h.to_bytes(2, "little") + b"\x80\x00\x00"
     gct = b"\x00" * 6
@@ -103,8 +121,11 @@ def gif_bytes(w: int = 4, h: int = 4, *, complete: bool = True, with_image: bool
         image = b"\x2c" + (0).to_bytes(2, "little") + (0).to_bytes(2, "little") \
                 + w.to_bytes(2, "little") + h.to_bytes(2, "little") + b"\x00"
         image += b"\x02"      # LZW min code size
-        image += b"\x01\x44"  # sub-block: size 1, one data byte
-        image += b"\x00"      # sub-block terminator
+        if empty_data:
+            image += b"\x00"  # immediately-empty data chain
+        else:
+            image += b"\x01\x44"  # sub-block: size 1, one data byte
+            image += b"\x00"      # sub-block terminator
     trailer = b"\x3b"
     if not complete:
         return header + gct + image  # no trailer
@@ -126,13 +147,37 @@ def bmp_bytes(w: int = 4, h: int = 4, *, complete: bool = True) -> bytes:
     return fh + dib + pixel_data
 
 
-def webp_bytes(w: int = 4, h: int = 4, *, complete: bool = True) -> bytes:
-    """Minimal lossless WEBP (VP8L) or truncated variant."""
+def webp_bytes(w: int = 4, h: int = 4, *, complete: bool = True, vp8x_only: bool = False,
+               anmf_meta_only: bool = False, drop_padding: bool = False) -> bytes:
+    """Minimal lossless WEBP (VP8L), or metadata-only / broken variants."""
+    def chunk(ctype: bytes, payload: bytes) -> bytes:
+        c = ctype + len(payload).to_bytes(4, "little") + payload
+        if len(payload) & 1:
+            c += b"\x00"  # required odd-size padding
+        return c
+
     bits = ((w - 1) & 0x3FFF) | (((h - 1) & 0x3FFF) << 14)
-    vp8l = b"\x2f" + bits.to_bytes(4, "little") + b"\x00" * 4
-    chunk = b"VP8L" + len(vp8l).to_bytes(4, "little") + vp8l
-    riff_size = 4 + len(chunk)
-    return b"RIFF" + riff_size.to_bytes(4, "little") + b"WEBP" + chunk[: len(chunk) if complete else 6]
+    vp8l = chunk(b"VP8L", b"\x2f" + bits.to_bytes(4, "little") + b"\x00" * 4)
+    vp8x = chunk(b"VP8X", b"\x00" + b"\x00" * 3 + (w - 1).to_bytes(3, "little") + (h - 1).to_bytes(3, "little"))
+    anmf_meta = chunk(b"ANMF", b"\x00" * 6 + (w - 1).to_bytes(3, "little") + (h - 1).to_bytes(3, "little") + b"\x00" * 7)
+
+    if vp8x_only:
+        payload = vp8x
+    elif anmf_meta_only:
+        payload = vp8x + anmf_meta
+    else:
+        payload = vp8l
+
+    riff_size = 4 + len(payload)
+    out = b"RIFF" + riff_size.to_bytes(4, "little") + b"WEBP" + payload
+    if drop_padding:
+        # strip the mandatory odd-chunk pad byte while keeping RIFF size honest
+        # to the (now unpadded) payload — chunk walker must reject the layout
+        out = out[:-1]
+        out = out[:4] + (riff_size - 1).to_bytes(4, "little") + out[8:]
+    if not complete:
+        return out[: len(out) - 6]
+    return out
 
 
 def make_theme(root: Path, slug: str = "test-theme", palette: dict | None = None,
@@ -347,6 +392,34 @@ class ThemeValidationTests(unittest.TestCase):
         d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=good[:sof_at + 2 + seglen])
         self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
 
+    def test_png_without_idat_fails(self):
+        d = make_theme(self.root, bg_name="0-x.png", bg_bytes=png_bytes(100, 100, with_idat=False))
+        self.assertTrue(any("no IDAT" in e for e in errors_of(self.rep(d))))
+
+    def test_png_ihdr_not_first_fails(self):
+        d = make_theme(self.root, bg_name="0-x.png", bg_bytes=png_bytes(100, 100, idat_first=False))
+        self.assertTrue(any("first chunk must be IHDR" in e for e in errors_of(self.rep(d))))
+
+    def test_png_duplicate_ihdr_fails(self):
+        d = make_theme(self.root, bg_name="0-x.png", bg_bytes=png_bytes(100, 100, dup_ihdr=True))
+        self.assertTrue(any("duplicate IHDR" in e for e in errors_of(self.rep(d))))
+
+    def test_png_fixture_is_genuinely_valid(self):
+        """The synthetic positive PNG fixture must contain real IDAT data."""
+        from PIL import Image  # noqa: F401 — skipped if Pillow unavailable
+        import io
+        im = Image.open(io.BytesIO(png_bytes(100, 100)))
+        im.load()
+        self.assertEqual(im.size, (100, 100))
+
+    def test_jpeg_without_sos_fails(self):
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=jpeg_bytes(640, 480, with_scan=False))
+        self.assertTrue(any("no SOS" in e for e in errors_of(self.rep(d))))
+
+    def test_jpeg_sos_without_entropy_fails(self):
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=jpeg_bytes(640, 480, empty_scan=True))
+        self.assertTrue(any("no scan entropy data" in e for e in errors_of(self.rep(d))))
+
     def test_jpeg_missing_eoi_fails(self):
         good = real_image("jpeg")
         d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=good[:-2])  # drop EOI
@@ -402,6 +475,23 @@ class ThemeValidationTests(unittest.TestCase):
         good[4:8] = (int.from_bytes(good[4:8], "little") * 4).to_bytes(4, "little")
         d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=bytes(good))
         self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_gif_empty_data_chain_fails(self):
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=gif_bytes(64, 64, empty_data=True))
+        self.assertTrue(any("no LZW data" in e for e in errors_of(self.rep(d))))
+
+    def test_webp_vp8x_only_fails(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=webp_bytes(64, 64, vp8x_only=True))
+        self.assertTrue(any("no image bitstream" in e for e in errors_of(self.rep(d))))
+
+    def test_webp_anmf_metadata_only_fails(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=webp_bytes(64, 64, anmf_meta_only=True))
+        self.assertTrue(any("bitstream" in e for e in errors_of(self.rep(d))))
+
+    def test_webp_missing_padding_fails(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=webp_bytes(64, 64, drop_padding=True))
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("not a valid image" in e for e in errs), f"expected failure: {errs}")
 
     def test_background_directory_entry_fails_cleanly(self):
         d = make_theme(self.root, bg_name=None, bg_dirs=["0-wallpaper.png"])
