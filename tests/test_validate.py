@@ -385,6 +385,68 @@ class ThemeValidationTests(unittest.TestCase):
         d = make_theme(self.root, palette={"lighter_background": "#050505"})
         self.assertTrue(any("monotonic" in e for e in errors_of(self.rep(d))))
 
+    # -- light-theme validation (relationship model, no key ordering) ---------
+
+    def _light_palette(self) -> dict:
+        p = dict(BASELINE)
+        p.update({
+            "mode": "light",
+            "accent": "#2e6fe8", "selection": "#ccd6e4", "muted": "#77818f",
+            "background": "#f5f3ec", "dark_background": "#ebe9e0",
+            "darker_background": "#ddd9cd", "lighter_background": "#e3e1d8",
+            "foreground": "#1b2a3a", "dark_foreground": "#5d6b7d",
+            "light_foreground": "#28394c", "bright_foreground": "#0f1c2b",
+            "red": "#b8344a", "yellow": "#9a7420", "orange": "#b06028",
+            "green": "#3c7a3f", "cyan": "#177b8a", "blue": "#2e5fb8",
+            "magenta": "#7d4fb5", "brown": "#8a5f3c",
+            "bright_red": "#992638", "bright_yellow": "#7c5c14",
+            "bright_green": "#2c6330", "bright_cyan": "#0f6270",
+            "bright_blue": "#1f4a9e", "bright_magenta": "#66389c",
+        })
+        return p
+
+    def test_valid_light_palette_lupine_order_passes(self):
+        """lupine/rose-pine key order: lighter_background before dark_background."""
+        p = self._light_palette()
+        p["dark_background"], p["lighter_background"] = "#e3e1d8", "#ebe9e0"
+        d = make_theme(self.root, palette=p)
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_valid_light_palette_latte_order_passes(self):
+        """catppuccin-latte/flexoki-light key order: dark_background before lighter."""
+        d = make_theme(self.root, palette=self._light_palette())
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_light_palette_with_tied_selection_and_lighter_passes(self):
+        """Stock `white` ties selection and lighter_background — must pass."""
+        p = self._light_palette()
+        p["lighter_background"] = p["selection"]
+        d = make_theme(self.root, palette=p)
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_invalid_light_palette_fails(self):
+        """selection lighter than background (selected area brighter than the
+        base surface) is broken on a light theme and must fail."""
+        p = self._light_palette()
+        p["selection"] = "#fdfdf9"  # lighter than background #f5f3ec
+        d = make_theme(self.root, palette=p)
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("lightest surface" in e for e in errs), f"expected failure: {errs}")
+
+    def test_invalid_light_palette_dark_fg_on_dark_surface_fails(self):
+        """muted must be darker than every surface; a muted tone lighter than
+        the darkest surface would be unreadable on that surface."""
+        p = self._light_palette()
+        p["muted"] = "#e2ded2"  # lum ~0.73 > darker_background #ddd9cd ~0.69
+        d = make_theme(self.root, palette=p)
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("muted must be darker" in e for e in errs), f"expected failure: {errs}")
+
+    def test_dark_theme_ramp_validation_unchanged(self):
+        """Dark ramp rule still enforces monotonic rise (regression guard)."""
+        d = make_theme(self.root, palette={"lighter_background": "#050505"})
+        self.assertTrue(any("dark: must rise" in e for e in errors_of(self.rep(d))))
+
     # -- forbidden files ------------------------------------------------------
     def test_forbidden_lua_fails(self):
         d = make_theme(self.root, files={"evil.lua": b"-- code\n"})
