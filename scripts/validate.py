@@ -2,35 +2,41 @@
 """Theme and repository validator for awesome-omarchy-themes.
 
 Deterministic gate for theme PRs. stdlib-only; no Omarchy install required.
-Exit 0 = pass. CI runs this same file on every PR.
+Exit 0 = pass. CI runs the unit tests (tests/) and then this file on every PR.
 
 Theme-level checks (per themes/<slug>/):
-  structure   colors.toml present; backgrounds/ with >=1 image; no forbidden
-              files (*.lua, terminal configs, vscode.json, shell.toml, .git*)
-  palette     26 canonical keys exactly; #rrggbb lowercase; mode dark|light
+  structure   colors.toml present; backgrounds/ with >=1 valid image; no
+              forbidden files (see FORBIDDEN — this repository's own policy:
+              code-capable files plus full shell.toml overrides)
+  palette     required 26-key baseline (this collection's contract); optional
+              current-Omarchy extension keys allowed with format validation;
+              #rrggbb lowercase (or Hyprland gradient strings where supported)
   contrast    foreground and accent >= 3:1 vs background (WCAG relative
               luminance); ramp monotonic by luminance in the mode's direction
-  assets      background formats jpg/jpeg/png/gif/bmp/webp; indexed names
-              (N-name.ext); wallpaper <= 8 MB; preview.png 1800x1012 PNG if
-              present
+  assets      backgrounds are real, complete images (signature, dimensions,
+              truncation) in jpg/jpeg/png/gif/bmp/webp with indexed names
+              (N-name.ext); wallpaper <= 8 MB; preview.png is a complete PNG
+              with valid IHDR, exactly 1800x1012
 Repo-level checks:
   index       every themes/<slug>/ has exactly one matching row in README.md's
-              Themes table (and no orphan rows)
-  hygiene     no machine-specific paths (/home/<user>, /Users/<user>) and no
-              obvious secret patterns in committed text files
+              Themes table; missing, duplicate, and orphan rows all fail
+  hygiene     Git-TRACKED text files only (deterministic across machines and
+              CI): no machine-specific paths, no obvious secret patterns
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import tomllib
+import zlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-THEMES = REPO / "themes"
+THEMES_DIR_NAME = "themes"
 
-CANONICAL_KEYS = [
+REQUIRED_KEYS = [
     "mode", "accent", "selection", "muted",
     "background", "dark_background", "darker_background", "lighter_background",
     "foreground", "dark_foreground", "light_foreground", "bright_foreground",
@@ -38,22 +44,47 @@ CANONICAL_KEYS = [
     "bright_red", "bright_yellow", "bright_green", "bright_cyan",
     "bright_blue", "bright_magenta",
 ]
+# Optional palette extensions supported by current Omarchy (quattro). Stock
+# themes ship these; docs/theming.md documents the gradient-capable pair.
+OPTIONAL_SOLID_KEYS = {"active_border_color", "active_tab_background"}
+OPTIONAL_GRADIENT_KEYS = {"hyprland_active_border", "hyprland_inactive_border"}
+# Legacy short names remain supported upstream (canonical wins when both set).
+LEGACY_ALIASES = {
+    "bg": "background", "dark_bg": "dark_background",
+    "darker_bg": "darker_background", "lighter_bg": "lighter_background",
+    "fg": "foreground", "dark_fg": "dark_foreground",
+    "light_fg": "light_foreground", "bright_fg": "bright_foreground",
+}
 RAMP = [
     "darker_background", "dark_background", "background",
     "lighter_background", "selection",
 ]
 FG_LADDER = ["muted", "dark_foreground", "foreground", "light_foreground", "bright_foreground"]
 BG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+
+# This repository's own policy. Omarchy (quattro) drops code-capable files
+# (*.lua, alacritty.toml, foot.ini, ghostty.conf, kitty.conf, vscode.json)
+# only from themes installed via `omarchy theme install` (git clone) and KEEPS
+# colour files including shell.toml. This collection's documented install path
+# is a plain directory copy, which Omarchy stages in full trust — so the repo
+# itself forbids code-capable files AND full shell.toml overrides. Section
+# overrides (shell.<section>.toml) remain allowed: they are colour-only.
+OMARCHY_DENIED = ["alacritty.toml", "foot.ini", "ghostty.conf", "kitty.conf", "vscode.json"]
 FORBIDDEN = re.compile(
     r"^(.*\.lua|alacritty\.toml|foot\.ini|ghostty\.conf|kitty\.conf|vscode\.json|shell\.toml|\.git.*)$"
 )
 INDEXED = re.compile(r"^[0-9]+-[a-z0-9-]+\.(jpg|jpeg|png|gif|bmp|webp)$")
 HEX = re.compile(r"^#[0-9a-f]{6}$")
+RGBA = r"rgba?\([0-9a-fA-F]{6,8}\)"
+GRADIENT = re.compile(rf"^{RGBA}( {RGBA})* [0-9]+deg$")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 SECRET = re.compile(
     r"(api[_-]?key|sk-[a-z0-9]{20}|ghp_[A-Za-z0-9]|gho_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|xox[baprs]-)"
 )
 MACHINE_PATH = re.compile(r"(/home/[a-z][a-z0-9_-]*/|/Users/[a-z][a-z0-9_-]*/)")
+PREVIEW_SIZE = (1800, 1012)
+MAX_BG_BYTES = 8 * 1024 * 1024
+MAX_PREVIEW_BYTES = 2 * 1024 * 1024
 
 
 class Report:
@@ -72,6 +103,150 @@ class Report:
     def ok(self) -> bool:
         return not self.errors
 
+
+# ---------------------------------------------------------------- images ----
+
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_info(data: bytes, require_complete: bool = True) -> tuple[int, int]:
+    """Walk PNG chunks; return (width, height). ValueError on any defect."""
+    if not data.startswith(PNG_SIG):
+        raise ValueError("bad PNG signature")
+    pos, seen_ihdr, width, height = 8, False, 0, 0
+    while pos < len(data):
+        if pos + 8 > len(data):
+            raise ValueError("truncated PNG (chunk header cut)")
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        ctype = data[pos + 4:pos + 8]
+        body = data[pos + 8:pos + 8 + length]
+        if len(body) < length:
+            raise ValueError("truncated PNG (chunk body cut)")
+        if pos + 8 + length + 4 > len(data):
+            raise ValueError("truncated PNG (CRC cut)")
+        crc = int.from_bytes(data[pos + 8 + length:pos + 12 + length], "big")
+        if zlib.crc32(ctype + body) & 0xFFFFFFFF != crc:
+            raise ValueError(f"PNG chunk {ctype!r} failed CRC")
+        if ctype == b"IHDR":
+            if length != 13:
+                raise ValueError("bad IHDR length")
+            width, height = int.from_bytes(body[0:4], "big"), int.from_bytes(body[4:8], "big")
+            seen_ihdr = True
+        pos += 12 + length
+        if ctype == b"IEND":
+            if not seen_ihdr:
+                raise ValueError("PNG has IEND but no IHDR")
+            if width <= 0 or height <= 0:
+                raise ValueError("PNG has non-positive dimensions")
+            return width, height
+    if require_complete:
+        raise ValueError("truncated PNG (no IEND)")
+    if not seen_ihdr:
+        raise ValueError("PNG missing IHDR")
+    if width <= 0 or height <= 0:
+        raise ValueError("PNG has non-positive dimensions")
+    return width, height
+
+
+def _jpeg_info(data: bytes) -> tuple[int, int]:
+    if len(data) < 4 or data[0:2] != b"\xff\xd8":
+        raise ValueError("bad JPEG signature")
+    pos, width, height = 2, 0, 0
+    while pos + 4 <= len(data):
+        if data[pos] != 0xFF:
+            raise ValueError("corrupt JPEG (missing marker prefix)")
+        marker = data[pos + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            pos += 2
+            continue
+        if marker == 0xDA:  # start of scan: dims must already be known
+            break
+        seglen = int.from_bytes(data[pos + 2:pos + 4], "big")
+        if seglen < 2 or pos + 2 + seglen > len(data):
+            raise ValueError("truncated JPEG")
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            height = int.from_bytes(data[pos + 5:pos + 7], "big")
+            width = int.from_bytes(data[pos + 7:pos + 9], "big")
+            return width, height
+        pos += 2 + seglen
+    if width and height:
+        return width, height
+    raise ValueError("JPEG ended without frame dimensions")
+
+
+def _gif_info(data: bytes) -> tuple[int, int]:
+    if len(data) < 10 or data[0:6] not in (b"GIF87a", b"GIF89a"):
+        raise ValueError("bad GIF signature")
+    w = int.from_bytes(data[6:8], "little")
+    h = int.from_bytes(data[8:10], "little")
+    if w <= 0 or h <= 0:
+        raise ValueError("GIF has non-positive dimensions")
+    return w, h
+
+
+def _bmp_info(data: bytes) -> tuple[int, int]:
+    if len(data) < 26 or data[0:2] != b"BM":
+        raise ValueError("bad BMP signature")
+    w = int.from_bytes(data[18:22], "little", signed=True)
+    h = abs(int.from_bytes(data[22:26], "little", signed=True))
+    if w <= 0 or h <= 0:
+        raise ValueError("BMP has non-positive dimensions")
+    return w, h
+
+
+def _webp_info(data: bytes) -> tuple[int, int]:
+    if len(data) < 16 or data[0:4] != b"RIFF" or data[8:12] != b"WEBP":
+        raise ValueError("bad WEBP signature")
+    declared = int.from_bytes(data[4:8], "little") + 8
+    if declared > len(data):
+        raise ValueError("truncated WEBP (RIFF size exceeds file)")
+    pos, width, height = 12, 0, 0
+    while pos + 8 <= len(data):
+        ctype = data[pos:pos + 4]
+        clen = int.from_bytes(data[pos + 4:pos + 8], "little") + (int.from_bytes(data[pos + 4:pos + 8], "little") & 1)
+        body = data[pos + 8:pos + 8 + clen]
+        if ctype == b"VP8X" and len(body) >= 10:
+            width = (int.from_bytes(body[4:7], "little") & 0xFFFFFF) + 1
+            height = (int.from_bytes(body[7:10], "little") & 0xFFFFFF) + 1
+        elif ctype == b"VP8 " and len(body) >= 10 and width == 0:
+            width = int.from_bytes(body[6:8], "little") & 0x3FFF
+            height = int.from_bytes(body[8:10], "little") & 0x3FFF
+        elif ctype == b"VP8L" and len(body) >= 5 and width == 0:
+            bits = int.from_bytes(body[1:5], "little")
+            width = (bits & 0x3FFF) + 1
+            height = ((bits >> 14) & 0x3FFF) + 1
+        pos += 8 + clen
+    if width <= 0 or height <= 0:
+        raise ValueError("WEBP has no frame with positive dimensions")
+    return width, height
+
+
+def probe_image(data: bytes, ext: str) -> tuple[str, int, int]:
+    """Validate image bytes for the format claimed by `ext`.
+
+    Returns (format, width, height). Raises ValueError on zero-byte, invalid
+    signature, truncation, corrupt structure, or non-positive dimensions.
+    """
+    if not data:
+        raise ValueError("empty (zero-byte) file")
+    probes: dict[str, tuple[str, object]] = {
+        ".png": ("PNG", _png_info),
+        ".jpg": ("JPEG", _jpeg_info),
+        ".jpeg": ("JPEG", _jpeg_info),
+        ".gif": ("GIF", _gif_info),
+        ".bmp": ("BMP", _bmp_info),
+        ".webp": ("WEBP", _webp_info),
+    }
+    if ext not in probes:
+        raise ValueError(f"unsupported extension {ext!r}")
+    fmt, fn = probes[ext]
+    width, height = fn(data)  # type: ignore[operator]
+    if width <= 0 or height <= 0:
+        raise ValueError("non-positive dimensions")
+    return fmt, width, height
+
+
+# ---------------------------------------------------------------- themes ----
 
 def srgb_to_lin(c: float) -> float:
     c /= 255.0
@@ -92,7 +267,6 @@ def contrast(a: str, b: str) -> float:
 def validate_theme(theme_dir: Path, slug: str) -> Report:
     rep = Report(f"theme:{slug}")
 
-    # -- structure ----------------------------------------------------------
     colors = theme_dir / "colors.toml"
     if not colors.is_file():
         rep.error("missing colors.toml")
@@ -113,31 +287,37 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
 
     for p in theme_dir.rglob("*"):
         rel = p.relative_to(theme_dir).as_posix()
-        if FORBIDDEN.fullmatch(rel) or FORBIDDEN.fullmatch(p.name):
-            rep.error(f"forbidden file for a git-distributed theme: {rel}")
+        if FORBIDDEN.fullmatch(p.name) or FORBIDDEN.fullmatch(rel) or rel.endswith(".lua"):
+            rep.error(
+                f"forbidden by this repository's color-only theme policy: {rel} "
+                f"(Omarchy drops code files only from git-cloned installs; this repo's "
+                f"copy-install path stages everything, so the policy is stricter)"
+            )
         if p.is_symlink():
-            rep.error(f"symlinks are dropped by Omarchy at staging: {rel}")
+            rep.error(f"symlinks are dropped by Omarchy when staging git-installed themes: {rel}")
 
-    # -- palette ------------------------------------------------------------
-    missing = [k for k in CANONICAL_KEYS if k not in data]
-    extra = [k for k in data if k not in CANONICAL_KEYS]
+    # -- palette: required baseline ------------------------------------------
+    missing = [k for k in REQUIRED_KEYS if k not in data]
     if missing:
-        rep.error(f"colors.toml missing keys: {', '.join(missing)}")
-    if extra:
-        rep.error(f"colors.toml has non-canonical keys: {', '.join(extra)}")
-    if missing:
+        rep.error(f"colors.toml missing required baseline keys: {', '.join(missing)}")
         return rep
 
     mode = data["mode"]
     if mode not in ("dark", "light"):
         rep.error(f"mode must be 'dark' or 'light', got {mode!r}")
 
+    allowed = set(REQUIRED_KEYS) | OPTIONAL_SOLID_KEYS | OPTIONAL_GRADIENT_KEYS | set(LEGACY_ALIASES)
     for k, v in data.items():
         if k == "mode":
             continue
-        if not isinstance(v, str) or not HEX.fullmatch(v):
+        if k in OPTIONAL_GRADIENT_KEYS:
+            if not (HEX.fullmatch(v) or GRADIENT.fullmatch(v)):
+                rep.error(f"{k}: expected #rrggbb or Hyprland gradient 'rgba(...) rgba(...) Ndeg', got {v!r}")
+        elif not isinstance(v, str) or not HEX.fullmatch(v):
             rep.error(f"{k}: expected lowercase #rrggbb, got {v!r}")
-
+    extra = [k for k in data if k not in allowed]
+    if extra:
+        rep.error(f"colors.toml has keys neither in the required baseline nor the supported optional set: {', '.join(sorted(extra))}")
     if rep.errors:
         return rep
 
@@ -167,61 +347,92 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
         for p in sorted(bgdir.iterdir()):
             if not INDEXED.fullmatch(p.name):
                 rep.error(f"background name must be N-short-name.ext: {p.name}")
-            if p.suffix.lower() not in BG_EXTS:
+                continue
+            ext = p.suffix.lower()
+            if ext not in BG_EXTS:
                 rep.error(f"background format not allowed: {p.name}")
-            if p.stat().st_size > 8 * 1024 * 1024:
-                rep.error(f"background exceeds 8 MB: {p.name} ({p.stat().st_size // 1024} KB)")
+                continue
+            size = p.stat().st_size
+            if size > MAX_BG_BYTES:
+                rep.error(f"background exceeds 8 MB: {p.name} ({size // 1024} KB)")
+            try:
+                fmt, w, h = probe_image(p.read_bytes(), ext)
+                if size <= MAX_BG_BYTES:
+                    rep.note(f"background {p.name}: {fmt} {w}x{h}, {size // 1024} KB")
+            except ValueError as e:
+                rep.error(f"background is not a valid image: {p.name}: {e}")
 
     preview = theme_dir / "preview.png"
     if preview.is_file():
         size = preview.stat().st_size
-        if size > 2 * 1024 * 1024:
+        if size > MAX_PREVIEW_BYTES:
             rep.error(f"preview.png exceeds 2 MB ({size // 1024} KB); quantize to <=256 colors")
-        with preview.open("rb") as fh:
-            head = fh.read(33)
-        if not (head.startswith(b"\x89PNG\r\n\x1a\n")):
-            rep.error("preview.png is not a PNG")
-        elif size > 24 and head[12:16] == b"IHDR":
-            w = int.from_bytes(head[16:20], "big")
-            h = int.from_bytes(head[20:24], "big")
-            if (w, h) != (1800, 1012):
-                rep.error(f"preview.png must be 1800x1012, got {w}x{h}")
+        try:
+            w, h = _png_info(preview.read_bytes(), require_complete=True)
+            if (w, h) != PREVIEW_SIZE:
+                rep.error(f"preview.png must be {PREVIEW_SIZE[0]}x{PREVIEW_SIZE[1]}, got {w}x{h}")
+        except ValueError as e:
+            rep.error(f"preview.png is not a valid complete PNG: {e}")
 
     return rep
 
 
-def validate_repo() -> Report:
+# ------------------------------------------------------------------ repo ----
+
+def _tracked_files(root: Path) -> list[Path]:
+    """Deterministically enumerate Git-tracked files. Fails closed."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True, check=True, text=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        raise RuntimeError(f"cannot enumerate tracked files (git required): {e}") from e
+    return [root / rel for rel in out.split("\0") if rel]
+
+
+def validate_repo(root: Path | None = None) -> Report:
+    root = root or REPO
     rep = Report("repo")
+    themes_dir = root / THEMES_DIR_NAME
 
-    readme = (REPO / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"## Themes\n\n\|(?:.*\n)+?", readme)
-    table_rows = re.findall(r"^\| \[`([a-z0-9-]+)`\]", readme, re.M)
+    readme = root / "README.md"
+    if not readme.is_file():
+        rep.error("README.md missing")
+        table_rows: list[str] = []
+    else:
+        table_rows = re.findall(r"^\| \[`([a-z0-9-]+)`\]", readme.read_text(encoding="utf-8"), re.M)
 
-    themes = sorted(p.name for p in THEMES.iterdir() if p.is_dir()) if THEMES.is_dir() else []
+    themes = sorted(p.name for p in themes_dir.iterdir() if p.is_dir()) if themes_dir.is_dir() else []
     for slug in themes:
-        if slug not in table_rows:
+        count = table_rows.count(slug)
+        if count == 0:
             rep.error(f"README Themes table missing row for '{slug}'")
+        elif count > 1:
+            rep.error(f"README Themes table has {count} rows for '{slug}' (exactly one required)")
     for slug in table_rows:
         if slug not in themes:
             rep.error(f"README Themes table has row for unknown theme '{slug}'")
-    if themes and not m:
+    if themes and not table_rows:
         rep.error("README.md is missing the Themes table section")
-
     if not table_rows and not themes:
         rep.note("no themes yet")
 
-    # hygiene scan over text files, skipping binaries by extension
+    # hygiene: tracked text files only — same result locally and in CI
     text_ext = {".md", ".toml", ".py", ".yml", ".yaml", ".gitignore", ".editorconfig", ".theme"}
-    for p in REPO.rglob("*"):
-        if not p.is_file() or ".git/" in p.as_posix():
-            continue
+    try:
+        files = _tracked_files(root)
+    except RuntimeError as e:
+        rep.error(str(e))
+        return rep
+    for p in files:
         if p.suffix.lower() not in text_ext and p.name not in (".gitignore", ".editorconfig", "LICENSE"):
             continue
         try:
             content = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, PermissionError):
             continue
-        rel = p.relative_to(REPO).as_posix()
+        rel = p.relative_to(root).as_posix()
         for match in SECRET.finditer(content):
             rep.error(f"possible secret in {rel}: {match.group(0)[:12]}…")
         for match in MACHINE_PATH.finditer(content):
@@ -231,21 +442,22 @@ def validate_repo() -> Report:
 
 
 def main() -> int:
-    if not THEMES.is_dir():
-        THEMES.mkdir(exist_ok=True)  # tolerate repos predating the first theme
+    themes_dir = REPO / THEMES_DIR_NAME
+    if not themes_dir.is_dir():
+        themes_dir.mkdir(exist_ok=True)  # tolerate repos predating the first theme
 
     targets = sys.argv[1:]
     if targets:
         reports = []
         for t in targets:
-            p = Path(t) if "/" in t else THEMES / t
+            p = Path(t) if "/" in t else themes_dir / t
             if not p.is_dir():
                 reports.append(Report(f"theme:{t}"))
                 reports[-1].error("theme directory not found")
                 continue
             reports.append(validate_theme(p, p.name))
     else:
-        reports = [validate_theme(d, d.name) for d in sorted(THEMES.iterdir()) if d.is_dir()]
+        reports = [validate_theme(d, d.name) for d in sorted(themes_dir.iterdir()) if d.is_dir()]
         reports.append(validate_repo())
 
     failed = False
@@ -257,7 +469,7 @@ def main() -> int:
         else:
             failed = True
             for e in rep.errors:
-                print(f"FAIL {rep.name}: {e}", file=sys.stdout)
+                print(f"FAIL {rep.name}: {e}")
 
     total = len(reports)
     passed = sum(1 for r in reports if r.ok)

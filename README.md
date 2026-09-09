@@ -35,9 +35,9 @@ A theme directory may contain:
 
 | File | Purpose |
 | --- | --- |
-| `colors.toml` | The palette. Required — this is the theme. |
-| `backgrounds/` | Wallpaper images cycled with `omarchy theme bg next`. |
-| `preview.png` | Thumbnail shown in the theme switcher (optional). |
+| `colors.toml` | Required. 26-key baseline palette (optional current-Omarchy extensions allowed). Every shell surface, terminal, editor, and app theme generates from it. |
+| `backgrounds/` | Required. ≥1 redistributable wallpaper; cycled with `omarchy theme bg next`. |
+| `preview.png` | Optional. Thumbnail for the theme switcher (1800×1012). |
 
 Palettes define `mode`, `accent`, `selection`, `muted`, a `background`/`foreground` ramp, and named colors (`red`, `green`, `blue`, …) plus bright variants. See the [official theming documentation](https://github.com/basecamp/omarchy/blob/quattro/docs/theming.md) for the full key list and staging behavior.
 

@@ -13,18 +13,18 @@ git checkout main && git pull && git checkout -b <theme-slug>
 Target layout (all paths relative to `themes/<slug>/`):
 
 ```
-colors.toml        REQUIRED  26 canonical palette keys — the entire theme derives from it
+colors.toml        REQUIRED  26-key baseline palette (optional current-Omarchy extensions allowed; see below)
 backgrounds/       REQUIRED  ≥1 image; indexed names; see "Asset rules" below
 preview.png        RECOMMENDED  1800×1012 thumbnail for the theme switcher
 icons.theme        OPTIONAL  exactly one line naming a stock icon set (e.g. Yaru-red)
 README.md          RECOMMENDED  palette table, contrast ratios, credits, compatibility
 ```
 
-Forbidden files (validator rejects): `*.lua`, `alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf`, `vscode.json`, `shell.toml` (full overrides), `.git*`. Omarchy's theme installer filters exactly these for git-installed themes — ship color, not code.
+Forbidden files (validator rejects): `*.lua`, `alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf`, `vscode.json`, `shell.toml` (full overrides), `.git*`. Clarification on who forbids what: **current Omarchy** drops only the code-capable files (`*.lua`, the four terminal configs, `vscode.json`) and *keeps* colour files including `shell.toml` when a theme is installed via `omarchy theme install` (git clone). **This repository** forbids the full list above as its own safety policy, because our documented install path is a plain directory copy — which Omarchy stages in full trust, with no filtering at all. Section overrides (`shell.<section>.toml`, colour-only) are allowed when a theme genuinely needs one.
 
 ### colors.toml
 
-The 26 canonical keys (groups in this order):
+The 26-key required baseline (groups in this order):
 
 ```toml
 mode = "dark"            # or "light"
@@ -66,12 +66,24 @@ Rules:
 - `foreground` and `accent` ≥ 3:1 contrast vs `background` (validator floor). Daily-driver target: foreground ≥ 10:1, accent ≥ 4:1.
 - Deriving from an image? See "Palette derivation" below.
 
+**Optional current-Omarchy extensions** (allowed in addition to the baseline; the validator format-checks them):
+
+```toml
+hyprland_active_border   = "rgba(da2b47ee) rgba(ece7ddee) 45deg"  # or solid #rrggbb
+hyprland_inactive_border = "#26161a"
+active_border_color      = "#da2b47"
+active_tab_background    = "#1b1215"
+```
+
+These are keys current Omarchy (quattro) stock themes use for richer border/surface values; the gradient-capable pair accepts a Hyprland gradient string. Legacy short names (`bg`, `fg`, `dark_bg`, …) also remain valid upstream. Any key outside the baseline + this supported set is rejected — it is a policy of this collection to keep palettes within what upstream actually consumes.
+
 ### Asset rules
 
-- Formats: `jpg` `jpeg` `png` `gif` `bmp` `webp`. Wallpaper supplied as the canonical asset stays as-is unless it exceeds **8 MB** — then re-encode (quality ~85 JPEG or webp) preserving aspect ratio and visual fidelity, and say so in the PR.
+- **`backgrounds/` is required**: every theme in this collection ships at least one redistributable wallpaper (`0-…`). Formats: `jpg` `jpeg` `png` `gif` `bmp` `webp`. Wallpaper supplied as the canonical asset stays as-is unless it exceeds **8 MB** — then re-encode (quality ~85 JPEG or webp) preserving aspect ratio and visual fidelity, and say so in the PR.
 - Names: `<index>-<short-name>.<ext>`, index starting at `0` — Omarchy sorts and cycles (`omarchy theme bg next`).
-- Only redistributable images. AI-generated art with no third-party claim is fine. State source + license in the PR description. No Hermes/Nous branding unless the maintainer supplies it for the theme.
-- `preview.png`: 1800×1012 (stock switcher format), PNG, target 300–800 KB (quantize to ≤256 colors if heavier). Content: wallpaper + themed shell surfaces; never fabricated UI.
+- Only redistributable images, with **source + redistribution license stated** (in the theme README and the PR). AI-generated art with no third-party claim is fine (CC0 dedication by the supplier is this repo's default). No Hermes/Nous branding unless the maintainer supplies it for the theme.
+- The validator verifies wallpapers are real, complete images (signature, dimensions, truncation, extension match) — a corrupt or mislabeled file fails the gate.
+- `preview.png`: 1800×1012 (stock switcher format), complete valid PNG, target 300–800 KB (quantize to ≤256 colors if heavier). Content: wallpaper + themed shell surfaces; never fabricated UI.
 
 ## 3. Palette derivation (Hermes)
 
