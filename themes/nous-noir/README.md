@@ -2,7 +2,7 @@
 
 ![Nous Noir](preview.png)
 
-A museum-noir monochrome dark theme: ink black, charcoal, graphite, silver, bone white — strictly grayscale, no chromatic accent. Built around the Nous Research editorial artwork — a chiaroscuro-lit classical Hermes statue beside the oversized NOUS wordmark, grain and celestial chart overlays — for a premium editorial, gallery-quiet desktop. The restrained sibling of Hermes Bloodline.
+A museum-noir near-monochrome dark theme: ink black, charcoal, graphite, silver, bone white — grayscale-led with no chromatic accent; the only color is deliberately desaturated semantic tints (rose-gray errors, sage-stone success, bone-olive warnings) where terminal/error/warning/success distinction requires it. Built around the Nous Research editorial artwork — a chiaroscuro-lit classical Hermes statue beside the oversized NOUS wordmark, grain and celestial chart overlays — for a premium editorial, gallery-quiet desktop. The restrained sibling of Hermes Bloodline.
 
 ## Palette
 
@@ -23,7 +23,7 @@ Semantic colors are deliberately desaturated, grayscale-compatible tones: `red` 
 | --- | --- |
 | `colors.toml` | Full 26-key palette — every shell surface, terminal, editor, and app theme generates from this. |
 | `backgrounds/0-nous-noir.png` | Canonical wallpaper (1672×941), used as-is. |
-| `icons.theme` | `Yaru-gray` — the neutral stock icon set. |
+| `icons.theme` | `Yaru-dark` — the dark neutral stock icon set. |
 | `preview.png` | Theme-switcher thumbnail (1800×1012). |
 
 No `.lua`, terminal configs, or `vscode.json` are shipped, so nothing is filtered when the theme is staged from a git checkout — the palette expresses the entire theme.
