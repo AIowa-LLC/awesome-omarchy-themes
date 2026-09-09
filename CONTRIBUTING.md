@@ -23,7 +23,7 @@ themes/<theme-name>/
 
 Rules:
 
-1. **`colors.toml` is required** and must parse as valid TOML. Follow the required 26-key baseline this collection mandates (matching [Omarchy's stock themes](https://github.com/basecamp/omarchy/tree/quattro/usr/share/omarchy/themes): `mode`, `accent`, `selection`, `muted`, background/foreground ramps, named and bright colors), plus optionally the current-Omarchy extension keys (`hyprland_active_border` etc.) documented in [docs/theme-creation.md](docs/theme-creation.md).
+1. **`colors.toml` is required** and must parse as valid TOML. Follow the required 26-key baseline this collection mandates (matching [Omarchy's stock themes](https://github.com/omacom/omarchy/tree/quattro/usr/share/omarchy/themes): `mode`, `accent`, `selection`, `muted`, background/foreground ramps, named and bright colors), plus optionally the current-Omarchy extension keys (`hyprland_active_border` etc.) documented in [docs/theme-creation.md](docs/theme-creation.md).
 2. **`theme-name` must be a lowercase slug** (`kebab-case`), matching the directory name.
 3. **Contrast:** keep `foreground` and `accent` at ≥ 3:1 contrast against `background` so text stays readable. If you derived the palette programmatically, note the tool used.
 4. **Backgrounds:** every theme ships **at least one** redistributable wallpaper (`backgrounds/` is required, not optional). Keep total theme size reasonable — compress large images before committing (>8 MB fails validation). Only include images you have the right to redistribute, and state the source **and redistribution license** in the theme README and PR description.

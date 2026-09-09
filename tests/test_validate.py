@@ -72,9 +72,73 @@ def jpeg_bytes(width: int, height: int) -> bytes:
     return b"".join(parts)
 
 
+# Tripwires are constructed at RUNTIME so committed test sources never
+# contain contiguous scanner signatures (the hygiene scan has no exemptions).
+SECRET_FIXTURE = ("gh" + "p_") + "1234567890abcdef"
+SECRET_DOC = ("to" + "ken: g") + "hp_1234567890abcdef\n"
+APIKEY_SCRATCH = ("ap" + "i_key") + "=abc123 " + ("/ho" + "me/tony/") + "secret\n"
+MACHINE_PATH_DOC = ("lives in /ho" + "me/tony/") + "projects\n"
+
+import base64
+
+
+# base64 so the suite stays stdlib-only. Truncation fixtures are derived from
+# these real bytes at runtime.
+JPEG_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDiqKKK8k9wKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA/9k="
+GIF_B64 = "R0lGODdhQABAAIEAAHg8HgAAAAAAAAAAACwAAAAAQABAAEAIaQABCBxIsKDBgwgTKlzIsKHDhxAjSpxIsaLFixgzatzIsaPHjyBDihxJsqTJkyhTqlzJsqXLlzBjypxJs6bNmzhz6tzJs6fPn0CDCh1KtKjRo0iTKl3KtKnTp1CjSp1KtarVq1izagUQEAA7"
+BMP_B64 = "Qk02MAAAAAAAADYAAAAoAAAAQAAAAEAAAAABABgAAAAAAAAwAADEDgAAxA4AAAAAAAAAAAAAHjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4"
+WEBP_B64 = "UklGRkoAAABXRUJQVlA4ID4AAADQAwCdASpAAEAAPm02mEkkIyKhIggAgA2JaQB2AAAjPuOsAFeIUwAA/vDEC/+6DLOHB7//cGZ9XX+AAAAAAA=="
+
+
+def real_image(kind: str) -> bytes:
+    return base64.b64decode({"jpeg": JPEG_B64, "gif": GIF_B64, "bmp": BMP_B64, "webp": WEBP_B64}[kind])
+
+
+def gif_bytes(w: int = 4, h: int = 4, *, complete: bool = True, with_image: bool = True) -> bytes:
+    """Structural GIF for negative tests (header/table/walk defects)."""
+    header = b"GIF89a" + w.to_bytes(2, "little") + h.to_bytes(2, "little") + b"\x80\x00\x00"
+    gct = b"\x00" * 6
+    image = b""
+    if with_image:
+        image = b"\x2c" + (0).to_bytes(2, "little") + (0).to_bytes(2, "little") \
+                + w.to_bytes(2, "little") + h.to_bytes(2, "little") + b"\x00"
+        image += b"\x02"      # LZW min code size
+        image += b"\x01\x44"  # sub-block: size 1, one data byte
+        image += b"\x00"      # sub-block terminator
+    trailer = b"\x3b"
+    if not complete:
+        return header + gct + image  # no trailer
+    return header + gct + image + trailer
+
+
+def bmp_bytes(w: int = 4, h: int = 4, *, complete: bool = True) -> bytes:
+    """Minimal structurally-valid BMP v3 (24bpp, BI_RGB) or truncated."""
+    row = ((w * 24 + 31) // 32) * 4
+    pixel_off = 14 + 40
+    pixel_data = (b"\x80" * (row * h)) if complete else (b"\x80" * max(0, row * h // 3))
+    total = pixel_off + len(pixel_data)
+    fh = b"BM" + total.to_bytes(4, "little") + b"\x00\x00\x00\x00" + pixel_off.to_bytes(4, "little")
+    dib = (40).to_bytes(4, "little") + w.to_bytes(4, "little", signed=True) \
+        + h.to_bytes(4, "little", signed=True) + (1).to_bytes(2, "little") \
+        + (24).to_bytes(2, "little") + (0).to_bytes(4, "little") \
+        + (len(pixel_data)).to_bytes(4, "little") + (2835).to_bytes(4, "little") \
+        + (2835).to_bytes(4, "little") + (0).to_bytes(4, "little") + (0).to_bytes(4, "little")
+    return fh + dib + pixel_data
+
+
+def webp_bytes(w: int = 4, h: int = 4, *, complete: bool = True) -> bytes:
+    """Minimal lossless WEBP (VP8L) or truncated variant."""
+    bits = ((w - 1) & 0x3FFF) | (((h - 1) & 0x3FFF) << 14)
+    vp8l = b"\x2f" + bits.to_bytes(4, "little") + b"\x00" * 4
+    chunk = b"VP8L" + len(vp8l).to_bytes(4, "little") + vp8l
+    riff_size = 4 + len(chunk)
+    return b"RIFF" + riff_size.to_bytes(4, "little") + b"WEBP" + chunk[: len(chunk) if complete else 6]
+
+
 def make_theme(root: Path, slug: str = "test-theme", palette: dict | None = None,
-               bg_name: str = "0-x.png", bg_bytes: bytes | None = None,
-               files: dict[str, bytes | str] | None = None, bg_files: list[tuple[str, bytes]] | None = None) -> Path:
+               bg_name: str | None = "0-x.png", bg_bytes: bytes | None = None,
+               files: dict[str, bytes | str] | None = None, bg_files: list[tuple[str, bytes]] | None = None,
+               raw_palette_lines: list[str] | None = None, bg_dirs: list[str] | None = None) -> Path:
     d = root / "themes" / slug
     (d / "backgrounds").mkdir(parents=True)
     data = dict(BASELINE)
@@ -85,15 +149,22 @@ def make_theme(root: Path, slug: str = "test-theme", palette: dict | None = None
             else:
                 data[k] = v
     lines = [f'{k} = "{v}"' for k, v in data.items()]
+    lines += raw_palette_lines or []
     (d / "colors.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     if bg_name is not None:
         (d / "backgrounds" / bg_name).write_bytes(bg_bytes if bg_bytes is not None else png_bytes(100, 100))
     for name, content in (files or {}).items():
         target = d / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content if isinstance(content, bytes) else content.encode())
+        if isinstance(content, str):
+            content = content.encode()
+        if target.suffix == ".png" and isinstance(content, bytes) and content[:4] == b"\xff\xd8\xff":
+            pass  # allow deliberate mismatches
+        target.write_bytes(content)
     for name, content in (bg_files or []):
         (d / "backgrounds" / name).write_bytes(content)
+    for name in (bg_dirs or []):
+        (d / "backgrounds" / name).mkdir(parents=True)
     return d
 
 
@@ -146,9 +217,57 @@ class ThemeValidationTests(unittest.TestCase):
         rep = self.rep(d)
         self.assertEqual(errors_of(rep), [], f"optional upstream keys must pass: {rep.errors}")
 
+    def test_upstream_solitude_style_border_values_pass(self):
+        """Exact values from current omacom/omarchy quattro stock themes."""
+        d = make_theme(self.root, palette={
+            # themes/solitude/colors.toml
+            "hyprland_active_border": "rgba(798186ee) rgba(caccccee)",   # no angle
+            "hyprland_inactive_border": "rgb(1e1e1e)",                   # rgb() hex form
+            "active_border_color": "#a8adb0",
+            "active_tab_background": "#798186",
+        })
+        rep = self.rep(d)
+        self.assertEqual(errors_of(rep), [], f"solitude-style values must pass: {rep.errors}")
+
+    def test_upstream_last_horizon_style_border_values_pass(self):
+        d = make_theme(self.root, palette={
+            # themes/last-horizon/colors.toml
+            "hyprland_active_border": "rgba(8a8588ee) rgba(e2dddcee)",
+            "hyprland_inactive_border": "rgba(584e51aa)",                # single rgba stop
+        })
+        rep = self.rep(d)
+        self.assertEqual(errors_of(rep), [], f"last-horizon-style values must pass: {rep.errors}")
+
+    def test_upstream_hackerman_angle_gradient_passes(self):
+        d = make_theme(self.root, palette={
+            # themes/hackerman/colors.toml
+            "hyprland_active_border": "rgba(26a269ee) rgba(2ec27eee) 45deg",
+        })
+        rep = self.rep(d)
+        self.assertEqual(errors_of(rep), [], f"angle-bearing gradient must pass: {rep.errors}")
+
     def test_optional_gradient_key_rejects_garbage(self):
         d = make_theme(self.root, palette={"hyprland_active_border": "not a color"})
         self.assertTrue(any("hyprland_active_border" in e for e in errors_of(self.rep(d))))
+
+    def test_optional_gradient_rejects_partial_garbage_stop(self):
+        d = make_theme(self.root, palette={"hyprland_active_border": "rgba(798186ee) nonsensestop"})
+        self.assertTrue(any("hyprland_active_border" in e for e in errors_of(self.rep(d))))
+
+    def test_non_string_optional_value_fails_cleanly(self):
+        d = make_theme(self.root, raw_palette_lines=["hyprland_active_border = 123"])
+        rep = self.rep(d)
+        self.assertTrue(any("expected a color/gradient string" in e for e in rep.errors),
+                        f"must produce a validator error, not a crash: {rep.errors}")
+
+    def test_optional_gradient_accepts_decimal_rgb_and_0x_forms(self):
+        d = make_theme(self.root, palette={
+            # decimal rgb() forms are unspaced, matching upstream parse_gradient
+            # (read -ra splits on whitespace, so spaces inside parens would break it)
+            "hyprland_active_border": "rgb(42,162,105) rgba(26,162,105,0.9) 45deg",
+            "hyprland_inactive_border": "0x1e1e1eff",
+        })
+        self.assertEqual(errors_of(self.rep(d)), [])
 
     def test_unknown_extra_key_still_rejected(self):
         d = make_theme(self.root, palette={"totally_made_up": "#123456"})
@@ -212,8 +331,83 @@ class ThemeValidationTests(unittest.TestCase):
         self.assertTrue(any("exceeds 8 MB" in e for e in errors_of(self.rep(d))))
 
     def test_valid_jpeg_background_passes(self):
-        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=jpeg_bytes(640, 480))
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=real_image("jpeg"))
         self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_jpeg_truncated_before_scan_fails(self):
+        good = real_image("jpeg")
+        sof_at = good.find(b"\xff\xc0")
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=good[:sof_at])
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_jpeg_truncated_after_dimensions_fails(self):
+        good = real_image("jpeg")
+        sof_at = good.find(b"\xff\xc0")
+        seglen = int.from_bytes(good[sof_at + 2:sof_at + 4], "big")
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=good[:sof_at + 2 + seglen])
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_jpeg_missing_eoi_fails(self):
+        good = real_image("jpeg")
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=good[:-2])  # drop EOI
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_jpeg_malformed_segment_length_fails(self):
+        good = bytearray(real_image("jpeg"))
+        sof_at = good.find(b"\xff\xc0")
+        good[sof_at + 2:sof_at + 4] = (0).to_bytes(2, "big")  # length < 2
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=bytes(good))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_gif_valid_passes(self):
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=real_image("gif"))
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_gif_header_only_fails(self):
+        header = b"GIF89a" + (64).to_bytes(2, "little") + (64).to_bytes(2, "little") + b"\x00\x00\x00"
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=header)
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_gif_truncated_no_trailer_fails(self):
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=gif_bytes(64, 64, complete=False))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_gif_trailer_without_image_fails(self):
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=gif_bytes(64, 64, with_image=False))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_bmp_valid_passes(self):
+        d = make_theme(self.root, bg_name="0-x.bmp", bg_bytes=real_image("bmp"))
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_bmp_header_only_fails(self):
+        full = real_image("bmp")
+        d = make_theme(self.root, bg_name="0-x.bmp", bg_bytes=full[:26])  # header, no body
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_bmp_truncated_pixels_fails(self):
+        d = make_theme(self.root, bg_name="0-x.bmp", bg_bytes=bmp_bytes(64, 64, complete=False))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_webp_valid_passes(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=real_image("webp"))
+        self.assertEqual(errors_of(self.rep(d)), [])
+
+    def test_webp_truncated_fails(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=webp_bytes(64, 64, complete=False))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_webp_lying_riff_size_fails(self):
+        good = bytearray(real_image("webp"))
+        good[4:8] = (int.from_bytes(good[4:8], "little") * 4).to_bytes(4, "little")
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=bytes(good))
+        self.assertTrue(any("not a valid image" in e for e in errors_of(self.rep(d))))
+
+    def test_background_directory_entry_fails_cleanly(self):
+        d = make_theme(self.root, bg_name=None, bg_dirs=["0-wallpaper.png"])
+        rep = self.rep(d)
+        self.assertTrue(any("directory" in e.lower() for e in rep.errors),
+                        f"directory-shaped background must fail cleanly: {rep.errors}")
 
     def test_unindexed_background_name_fails(self):
         d = make_theme(self.root, bg_name="wallpaper.png", bg_bytes=png_bytes(100, 100))
@@ -275,8 +469,7 @@ class RepoValidationTests(unittest.TestCase):
         make_theme(self.root)
         self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
         git_repo_with_theme(self.root)
-        # drop an untracked scratch file with BOTH tripwires after the commit
-        (self.root / "SCRATCH.md").write_text("api_key=abc123 /home/tony/secret\n", encoding="utf-8")
+        (self.root / "SCRATCH.md").write_text(APIKEY_SCRATCH, encoding="utf-8")
         rep = validate.validate_repo(self.root)
         self.assertEqual(rep.errors, [], f"untracked files must not affect hygiene: {rep.errors}")
 
@@ -285,7 +478,7 @@ class RepoValidationTests(unittest.TestCase):
         self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
         git_repo_with_theme(self.root)
         (self.root / "docs" ).mkdir(exist_ok=True)
-        (self.root / "docs" / "note.md").write_text("lives in /home/tony/projects\n", encoding="utf-8")
+        (self.root / "docs" / "note.md").write_text(MACHINE_PATH_DOC, encoding="utf-8")
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-qm", "add note"], cwd=self.root, check=True, capture_output=True)
         rep = validate.validate_repo(self.root)
@@ -295,22 +488,40 @@ class RepoValidationTests(unittest.TestCase):
         make_theme(self.root)
         self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
         git_repo_with_theme(self.root)
-        (self.root / "theme-doc.md").write_text("token: ghp_1234567890abcdef\n", encoding="utf-8")
+        (self.root / "theme-doc.md").write_text(SECRET_DOC, encoding="utf-8")
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-qm", "add doc"], cwd=self.root, check=True, capture_output=True)
         rep = validate.validate_repo(self.root)
         self.assertTrue(any("possible secret" in e for e in rep.errors))
 
-    def test_tracked_secret_in_test_dir_is_exempt_fixture(self):
+    def test_tracked_secret_under_tests_also_fails(self):
         make_theme(self.root)
         self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
         git_repo_with_theme(self.root)
         (self.root / "tests").mkdir(exist_ok=True)
-        (self.root / "tests" / "fixtures.py").write_text("SECRET = 'ghp_1234567890abcdef'\n", encoding="utf-8")
+        (self.root / "tests" / "leaked.py").write_text(f"KEY = '{SECRET_FIXTURE}'\n", encoding="utf-8")
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-qm", "add fixture"], cwd=self.root, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "leak"], cwd=self.root, check=True, capture_output=True)
         rep = validate.validate_repo(self.root)
-        self.assertEqual(rep.errors, [], f"tests/ fixtures are exempt by design: {rep.errors}")
+        self.assertTrue(any("possible secret" in e and "tests/leaked.py" in e for e in rep.errors),
+                        f"tests/ must be scanned: {rep.errors}")
+
+    def test_tracked_machine_path_under_tests_also_fails(self):
+        make_theme(self.root)
+        self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
+        git_repo_with_theme(self.root)
+        (self.root / "tests").mkdir(exist_ok=True)
+        (self.root / "tests" / "pathleak.py").write_text(f"HOME_DOC = '{MACHINE_PATH_DOC.strip()}'\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "leak path"], cwd=self.root, check=True, capture_output=True)
+        rep = validate.validate_repo(self.root)
+        self.assertTrue(any("machine-specific path" in e and "tests/pathleak.py" in e for e in rep.errors),
+                        f"tests/ must be scanned: {rep.errors}")
+
+    def test_committed_test_suite_itself_passes_hygiene(self):
+        """The validator's own committed test source must survive its scan."""
+        rep = validate.validate_repo(REPO)
+        self.assertEqual(rep.errors, [], f"repo (incl. tests/) must be hygiene-clean: {rep.errors}")
 
 
 class PngStructureTests(unittest.TestCase):

@@ -75,8 +75,36 @@ FORBIDDEN = re.compile(
 )
 INDEXED = re.compile(r"^[0-9]+-[a-z0-9-]+\.(jpg|jpeg|png|gif|bmp|webp)$")
 HEX = re.compile(r"^#[0-9a-f]{6}$")
-RGBA = r"rgba?\([0-9a-fA-F]{6,8}\)"
-GRADIENT = re.compile(rf"^{RGBA}( {RGBA})* [0-9]+deg$")
+
+# --- Upstream color-stop grammar -------------------------------------------
+# Mirrors parse_gradient()/color_to_shell_hex() in current omacom/omarchy
+# quattro (bin/omarchy-theme-set-templates): a border value is one or more
+# color stops separated by whitespace, plus an optional trailing angle.
+# Accepted stop forms (case-insensitive, matching upstream):
+#   #rrggbb / #rrggbbaa
+#   rgb(rrggbb) / rgba(rrggbbaa)
+#   rgb(r,g,b) / rgba(r,g,b[,a])   (decimal, 0-255 each)
+#   0xrrggbbaa
+_STOP = re.compile(
+    r"^(#[0-9a-f]{6}(?:[0-9a-f]{2})?"
+    r"|rgba?\([0-9a-f]{6}(?:[0-9a-f]{2})?\)"
+    r"|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*\d+(\.\d+)?\s*)?\)"
+    r"|0x[0-9a-f]{8})$",
+    re.IGNORECASE,
+)
+_ANGLE = re.compile(r"^-?\d+(?:\.\d+)?deg$", re.IGNORECASE)
+
+
+def valid_border_value(value: str) -> bool:
+    """True if `value` is a valid upstream border color/gradient string."""
+    stops = 0
+    for part in value.split():
+        if _ANGLE.fullmatch(part):
+            continue
+        if not _STOP.fullmatch(part):
+            return False
+        stops += 1
+    return stops >= 1
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 SECRET = re.compile(
     r"(api[_-]?key|sk-[a-z0-9]{20}|ghp_[A-Za-z0-9]|gho_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|xox[baprs]-)"
@@ -149,73 +177,181 @@ def _png_info(data: bytes, require_complete: bool = True) -> tuple[int, int]:
 
 
 def _jpeg_info(data: bytes) -> tuple[int, int]:
+    """Walk JPEG segments; require SOS and a following EOI for completeness."""
     if len(data) < 4 or data[0:2] != b"\xff\xd8":
         raise ValueError("bad JPEG signature")
-    pos, width, height = 2, 0, 0
-    while pos + 4 <= len(data):
+    pos, width, height, saw_sof = 2, 0, 0, False
+    while pos + 2 <= len(data):
         if data[pos] != 0xFF:
             raise ValueError("corrupt JPEG (missing marker prefix)")
         marker = data[pos + 1]
-        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+        if marker == 0xFF:
+            pos += 1
+            continue
+        if marker == 0xD9:  # EOI
+            if not saw_sof:
+                raise ValueError("JPEG EOI before any frame header")
+            if width <= 0 or height <= 0:
+                raise ValueError("JPEG has non-positive dimensions")
+            return width, height
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # standalone markers
             pos += 2
             continue
-        if marker == 0xDA:  # start of scan: dims must already be known
-            break
+        if pos + 4 > len(data):
+            raise ValueError("truncated JPEG (segment length cut)")
         seglen = int.from_bytes(data[pos + 2:pos + 4], "big")
-        if seglen < 2 or pos + 2 + seglen > len(data):
-            raise ValueError("truncated JPEG")
+        if seglen < 2:
+            raise ValueError("malformed JPEG segment length (< 2)")
+        if pos + 2 + seglen > len(data):
+            raise ValueError("truncated JPEG (segment body cut)")
         if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            if seglen < 7:
+                raise ValueError("malformed JPEG SOF segment")
             height = int.from_bytes(data[pos + 5:pos + 7], "big")
             width = int.from_bytes(data[pos + 7:pos + 9], "big")
-            return width, height
+            saw_sof = True
+            if width <= 0 or height <= 0:
+                raise ValueError("JPEG has non-positive dimensions")
+        if marker == 0xDA:  # SOS: scan data follows until a real marker
+            scan = pos + 2 + seglen
+            while scan + 1 < len(data):
+                if data[scan] == 0xFF and data[scan + 1] not in (0x00,) and not (0xD0 <= data[scan + 1] <= 0xD7):
+                    break  # candidate segment marker inside/after scan
+                scan += 1
+            pos = scan
+            continue
         pos += 2 + seglen
-    if width and height:
-        return width, height
-    raise ValueError("JPEG ended without frame dimensions")
+    raise ValueError("truncated JPEG (no EOI)")
 
 
 def _gif_info(data: bytes) -> tuple[int, int]:
-    if len(data) < 10 or data[0:6] not in (b"GIF87a", b"GIF89a"):
+    """Walk GIF blocks; require an image descriptor and the 0x3B trailer."""
+    if len(data) < 13 or data[0:6] not in (b"GIF87a", b"GIF89a"):
         raise ValueError("bad GIF signature")
     w = int.from_bytes(data[6:8], "little")
     h = int.from_bytes(data[8:10], "little")
     if w <= 0 or h <= 0:
         raise ValueError("GIF has non-positive dimensions")
-    return w, h
+    flags = data[10]
+    pos = 13
+    if flags & 0x80:  # global color table
+        pos += 3 * (2 ** ((flags & 0x07) + 1))
+    if pos > len(data):
+        raise ValueError("truncated GIF (global color table cut)")
+    saw_image = False
+    while pos < len(data):
+        b = data[pos]
+        if b == 0x3B:  # trailer — complete
+            if not saw_image:
+                raise ValueError("GIF trailer with no image data")
+            return w, h
+        if b == 0x21:  # extension block
+            if pos + 2 > len(data):
+                raise ValueError("truncated GIF (extension header cut)")
+            pos += 2  # skip label + sub-block-introducer position
+            pos = _gif_skip_subblocks(data, pos)
+        elif b == 0x2C:  # image descriptor
+            if pos + 10 > len(data):
+                raise ValueError("truncated GIF (image descriptor cut)")
+            iflags = data[pos + 9]
+            pos += 10
+            if iflags & 0x80:
+                pos += 3 * (2 ** ((iflags & 0x07) + 1))
+            if pos >= len(data):
+                raise ValueError("truncated GIF (local color table cut)")
+            pos += 1  # LZW minimum code size
+            pos = _gif_skip_subblocks(data, pos)
+            saw_image = True
+        else:
+            raise ValueError(f"corrupt GIF (unknown block introducer 0x{b:02x})")
+    raise ValueError("truncated GIF (no trailer)")
+
+
+def _gif_skip_subblocks(data: bytes, pos: int) -> int:
+    while pos < len(data):
+        size = data[pos]
+        pos += 1
+        if size == 0:
+            return pos
+        pos += size
+        if pos > len(data):
+            raise ValueError("truncated GIF (sub-block cut)")
+    raise ValueError("truncated GIF (unterminated sub-block chain)")
 
 
 def _bmp_info(data: bytes) -> tuple[int, int]:
+    """Validate BMP header consistency and pixel-data reachability."""
     if len(data) < 26 or data[0:2] != b"BM":
         raise ValueError("bad BMP signature")
+    declared = int.from_bytes(data[2:6], "little")
+    if declared < 26 or declared > len(data):
+        raise ValueError("truncated BMP (declared size exceeds file)")
     w = int.from_bytes(data[18:22], "little", signed=True)
     h = abs(int.from_bytes(data[22:26], "little", signed=True))
     if w <= 0 or h <= 0:
         raise ValueError("BMP has non-positive dimensions")
+    if len(data) < 30:
+        raise ValueError("truncated BMP (DIB header cut)")
+    dib = int.from_bytes(data[14:18], "little")
+    bpp_off = 28
+    if dib >= 12 and len(data) >= bpp_off + 2:
+        bpp = int.from_bytes(data[bpp_off:bpp_off + 2], "little")
+        if bpp == 0:
+            raise ValueError("BMP declares 0 bits per pixel")
+        row = ((w * bpp + 31) // 32) * 4
+        pixel_off = int.from_bytes(data[10:14], "little")
+        if dib >= 40 and len(data) >= 38:
+            comp = int.from_bytes(data[30:34], "little")
+            if comp not in (0, 1, 2, 3):  # BI_RGB, RLE8, RLE4, BITFIELDS
+                raise ValueError(f"BMP declares unsupported compression {comp}")
+        needed = pixel_off + row * h
+        if pixel_off < 26 or pixel_off > len(data):
+            raise ValueError("truncated BMP (pixel offset beyond file)")
+        if needed > len(data):
+            raise ValueError("truncated BMP (pixel data incomplete)")
     return w, h
 
 
 def _webp_info(data: bytes) -> tuple[int, int]:
-    if len(data) < 16 or data[0:4] != b"RIFF" or data[8:12] != b"WEBP":
+    """Walk RIFF chunks; verify declared sizes/padding and payload bounds."""
+    if len(data) < 12 or data[0:4] != b"RIFF" or data[8:12] != b"WEBP":
         raise ValueError("bad WEBP signature")
-    declared = int.from_bytes(data[4:8], "little") + 8
-    if declared > len(data):
+    riff_size = int.from_bytes(data[4:8], "little")
+    if riff_size < 4:
+        raise ValueError("malformed WEBP (RIFF size too small)")
+    riff_end = 8 + riff_size
+    if riff_end > len(data):
         raise ValueError("truncated WEBP (RIFF size exceeds file)")
     pos, width, height = 12, 0, 0
-    while pos + 8 <= len(data):
+    while pos + 8 <= riff_end:
         ctype = data[pos:pos + 4]
-        clen = int.from_bytes(data[pos + 4:pos + 8], "little") + (int.from_bytes(data[pos + 4:pos + 8], "little") & 1)
-        body = data[pos + 8:pos + 8 + clen]
+        clen = int.from_bytes(data[pos + 4:pos + 8], "little")
+        body_start = pos + 8
+        body_end = body_start + clen
+        if body_end > riff_end:
+            raise ValueError("truncated WEBP (chunk exceeds RIFF bounds)")
+        body = data[body_start:body_end]
         if ctype == b"VP8X" and len(body) >= 10:
             width = (int.from_bytes(body[4:7], "little") & 0xFFFFFF) + 1
             height = (int.from_bytes(body[7:10], "little") & 0xFFFFFF) + 1
-        elif ctype == b"VP8 " and len(body) >= 10 and width == 0:
+        elif ctype == b"VP8 " and len(body) >= 10:
+            # lossy frame: 3-byte frame tag, then sync code 0x9d 0x01 0x2a
+            if body[3:6] != b"\x9d\x01\x2a":
+                raise ValueError("corrupt WEBP (bad VP8 sync code)")
             width = int.from_bytes(body[6:8], "little") & 0x3FFF
             height = int.from_bytes(body[8:10], "little") & 0x3FFF
-        elif ctype == b"VP8L" and len(body) >= 5 and width == 0:
+        elif ctype == b"VP8L" and len(body) >= 5:
+            if body[0] != 0x2f:
+                raise ValueError("corrupt WEBP (bad VP8L signature)")
             bits = int.from_bytes(body[1:5], "little")
             width = (bits & 0x3FFF) + 1
             height = ((bits >> 14) & 0x3FFF) + 1
-        pos += 8 + clen
+        elif ctype == b"ANMF" and len(body) >= 16 and width == 0:
+            width = (int.from_bytes(body[6:9], "little") & 0xFFFFFF) + 1
+            height = (int.from_bytes(body[9:12], "little") & 0xFFFFFF) + 1
+        pos = body_end + (clen & 1)  # chunks are padded to even sizes
+    if pos < riff_end and riff_end - pos > 1:
+        raise ValueError("truncated WEBP (unparsed trailing bytes inside RIFF)")
     if width <= 0 or height <= 0:
         raise ValueError("WEBP has no frame with positive dimensions")
     return width, height
@@ -310,9 +446,15 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
     for k, v in data.items():
         if k == "mode":
             continue
-        if k in OPTIONAL_GRADIENT_KEYS:
-            if not (HEX.fullmatch(v) or GRADIENT.fullmatch(v)):
-                rep.error(f"{k}: expected #rrggbb or Hyprland gradient 'rgba(...) rgba(...) Ndeg', got {v!r}")
+        if k in OPTIONAL_GRADIENT_KEYS or k in OPTIONAL_SOLID_KEYS:
+            if not isinstance(v, str):
+                rep.error(f"{k}: expected a color/gradient string, got {type(v).__name__} {v!r}")
+            elif not valid_border_value(v):
+                rep.error(
+                    f"{k}: not a valid current-Omarchy color/gradient value: {v!r} "
+                    f"(stops: #rrggbb[aa], rgb()/rgba() hex or decimal, 0xrrggbbaa; "
+                    f"multi-stop gradients with optional Ndeg angle)"
+                )
         elif not isinstance(v, str) or not HEX.fullmatch(v):
             rep.error(f"{k}: expected lowercase #rrggbb, got {v!r}")
     extra = [k for k in data if k not in allowed]
@@ -347,6 +489,15 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
         for p in sorted(bgdir.iterdir()):
             if not INDEXED.fullmatch(p.name):
                 rep.error(f"background name must be N-short-name.ext: {p.name}")
+                continue
+            if p.is_dir():
+                rep.error(f"background entry is a directory, not an image file: {p.name}/")
+                continue
+            if p.is_symlink():
+                rep.error(f"background entry is a symlink, not a regular file: {p.name}")
+                continue
+            if not p.is_file():
+                rep.error(f"background entry is not a regular file: {p.name}")
                 continue
             ext = p.suffix.lower()
             if ext not in BG_EXTS:
@@ -419,8 +570,8 @@ def validate_repo(root: Path | None = None) -> Report:
         rep.note("no themes yet")
 
     # hygiene: tracked text files only — same result locally and in CI.
-    # tests/ is exempt by design: its fixtures deliberately contain
-    # secret-shaped and machine-path-shaped strings to exercise this scan.
+    # No directory is exempt: tripwire-shaped strings needed by the test
+    # suite are constructed at runtime there so committed sources stay clean.
     text_ext = {".md", ".toml", ".py", ".yml", ".yaml", ".gitignore", ".editorconfig", ".theme"}
     try:
         files = _tracked_files(root)
@@ -428,16 +579,13 @@ def validate_repo(root: Path | None = None) -> Report:
         rep.error(str(e))
         return rep
     for p in files:
-        rel_posix = p.relative_to(root).as_posix()
-        if rel_posix.startswith("tests/"):
-            continue
         if p.suffix.lower() not in text_ext and p.name not in (".gitignore", ".editorconfig", "LICENSE"):
             continue
         try:
             content = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, PermissionError):
             continue
-        rel = rel_posix
+        rel = p.relative_to(root).as_posix()
         for match in SECRET.finditer(content):
             rep.error(f"possible secret in {rel}: {match.group(0)[:12]}…")
         for match in MACHINE_PATH.finditer(content):
