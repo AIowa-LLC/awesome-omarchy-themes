@@ -13,7 +13,7 @@ A brutalist, premium-editorial dark theme: deep black, bone white, arterial red.
 | bright_foreground | `#fffdf9` | 19.49:1 |
 | accent (arterial red) | `#da2b47` | 4.16:1 |
 
-All named and bright colors hold ≥ 5:1 against `background`; the neutral ramp runs `#040404 → #1b1215` with a red-tinted `lighter_background` and `selection` so surfaces stay warm-black instead of gray. The terminal ANSI set is desaturated-editorial (dusty green, slate blue, mauve) so red stays the only saturated voice on screen.
+All named and bright colors hold ≥ 4:1 against `background` (minimum: `red` at 4.07:1); the neutral ramp runs `#040404 → #1b1215` with a red-tinted `lighter_background` and `selection` so surfaces stay warm-black instead of gray. The terminal ANSI set is desaturated-editorial (dusty green, slate blue, mauve) so red stays the only saturated voice on screen.
 
 ## What ships
 
@@ -40,6 +40,8 @@ omarchy theme set hermes-bloodline
 - Built and verified against Omarchy `4.0.3-1` (quattro-era theming: canonical `colors.toml` keys, generated surface files).
 - No hand-written overrides over generated files; tracks template output cleanly across Omarchy updates.
 
-## Credits
+## Credits and license
 
-Wallpaper artwork created for the Hermes Bloodline visual identity and supplied by the repository owner for this collection. Palette hand-tuned (with WCAG contrast verification) from the artwork's deep black / bone white / arterial red.
+- **Wallpaper** (`backgrounds/0-hermes-bloodline.png`): created for the Hermes Bloodline visual identity and supplied by the repository owner (Tony Simons / AIowa LLC) for this collection. Dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — copy, modify, and redistribute freely, no attribution required.
+- **Preview** (`preview.png`): a derivative work composed from live captures of the applied theme (wallpaper + shell surfaces + palette terminal); same source artwork, same CC0 1.0 dedication.
+- **Palette**: hand-tuned (with WCAG contrast verification) from the artwork's deep black / bone white / arterial red.
