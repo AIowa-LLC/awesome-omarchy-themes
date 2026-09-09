@@ -33,6 +33,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`hermachy`](themes/hermachy/) | light | Porcelain, navy-charcoal, cobalt — architectural Omarchy branding. |
 | [`majestic-monolith`](themes/majestic-monolith/) | light | Warm paper, graphite, ruby — brutal editorial monolith. |
 | [`nous-dayshift`](themes/nous-dayshift/) | light | Warm white, graphite, Nous cobalt — daylight community ops. |
+| [`roseglass`](themes/roseglass/) | light | Pearl, wine ink, rose glass — soft power, hard systems. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
