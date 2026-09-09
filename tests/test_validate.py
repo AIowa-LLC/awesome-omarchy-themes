@@ -2,7 +2,9 @@
 
 Run: python3 -m unittest discover   (from the repository root)
 
-Stdlib unittest only. Fixtures are built in tmp dirs from a known-good
+Uses the stdlib unittest framework. Pillow is a required dependency of the
+validator (requirements-validator.txt) and is used by these tests for
+decodability cross-checks. Fixtures are built in tmp dirs from a known-good
 baseline palette (the integrated hermes-bloodline values), so the real
 theme tree is never touched.
 """
@@ -98,17 +100,53 @@ MACHINE_PATH_DOC = ("lives in /ho" + "me/tony/") + "projects\n"
 
 import base64
 
-# Optional: used only by the decodability cross-check test (skipped without it).
-try:
-    import PIL.Image  # type: ignore
-    HAS_PIL = True
-except ImportError:  # pragma: no cover
-    PIL = None
-    HAS_PIL = False
+import io as _io
+
+import PIL.Image
+import PIL.ImageFile
+
+PIL.ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 
-# base64 so the suite stays stdlib-only. Truncation fixtures are derived from
-# these real bytes at runtime.
+def corrupt_payload_png(w: int = 100, h: int = 100) -> bytes:
+    """Structurally valid PNG whose IDAT contains garbage (correct CRCs)."""
+    def chunk(ctype: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + ctype + data
+                + struct.pack(">I", zlib.crc32(ctype + data) & 0xFFFFFFFF))
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+    garbage_idat = chunk(b"IDAT", bytes(range(256)) * 4)  # non-zlib payload
+    return b"\x89PNG\r\n\x1a\n" + ihdr + garbage_idat + chunk(b"IEND", b"")
+
+
+def corrupt_payload_jpeg() -> bytes:
+    """Real JPEG with its DHT (Huffman table) payload replaced by zeros."""
+    jpeg_real = real_image("jpeg")
+    dht_at = jpeg_real.find(b"\xff\xc4")
+    seglen = int.from_bytes(jpeg_real[dht_at + 2:dht_at + 4], "big")
+    return jpeg_real[:dht_at + 4] + b"\x00" * (seglen - 2) + jpeg_real[dht_at + 2 + seglen:]
+
+
+def corrupt_payload_gif() -> bytes:
+    """Real GIF with its LZW image-data bytes replaced by garbage."""
+    gif_real = real_image("gif")
+    desc_at = gif_real.find(b"\x2c")
+    iflags = gif_real[desc_at + 9]
+    lzw_at = desc_at + 10 + (3 * (2 ** ((iflags & 0x07) + 1)) if iflags & 0x80 else 0) + 1
+    block_size = gif_real[lzw_at]
+    return (gif_real[:lzw_at] + bytes([block_size]) + b"\xff" * block_size
+            + gif_real[lzw_at + 1 + block_size:])
+
+
+def corrupt_payload_webp() -> bytes:
+    """Structurally valid VP8L chunk whose compressed payload is garbage."""
+    bits = (63 & 0x3FFF) | ((63 & 0x3FFF) << 14)
+    payload = b"\x2f" + b"\xde\xad\xbe\xef" + b"\xff" * 4  # sig byte + garbage
+    chunk = b"VP8L" + len(payload).to_bytes(4, "little") + payload + b"\x00"  # odd pad
+    return b"RIFF" + (4 + len(chunk)).to_bytes(4, "little") + b"WEBP" + chunk
+
+
+# Real minimal images generated with Pillow, embedded as base64. Truncation
+# fixtures are derived from these real bytes at runtime.
 JPEG_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABAAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDiqKKK8k9wKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA/9k="
 GIF_B64 = "R0lGODdhQABAAIEAAHg8HgAAAAAAAAAAACwAAAAAQABAAEAIaQABCBxIsKDBgwgTKlzIsKHDhxAjSpxIsaLFixgzatzIsaPHjyBDihxJsqTJkyhTqlzJsqXLlzBjypxJs6bNmzhz6tzJs6fPn0CDCh1KtKjRo0iTKl3KtKnTp1CjSp1KtarVq1izagUQEAA7"
 BMP_B64 = "Qk02MAAAAAAAADYAAAAoAAAAQAAAAEAAAAABABgAAAAAAAAwAADEDgAAxA4AAAAAAAAAAAAAHjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4Hjx4"
@@ -412,13 +450,69 @@ class ThemeValidationTests(unittest.TestCase):
         d = make_theme(self.root, bg_name="0-x.png", bg_bytes=png_bytes(100, 100, dup_ihdr=True))
         self.assertTrue(any("duplicate IHDR" in e for e in errors_of(self.rep(d))))
 
-    @unittest.skipUnless(HAS_PIL, "Pillow not installed (optional; CI runners lack it)")
     def test_png_fixture_is_genuinely_valid(self):
-        """The synthetic positive PNG fixture must contain real IDAT data."""
-        import io
-        im = PIL.Image.open(io.BytesIO(png_bytes(100, 100)))
+        """The synthetic positive PNG fixture must actually decode."""
+        im = PIL.Image.open(_io.BytesIO(png_bytes(100, 100)))
         im.load()
         self.assertEqual(im.size, (100, 100))
+
+    # -- corrupt-payload (structurally plausible, undecodable) ---------------
+
+    def test_corrupt_payload_png_fails(self):
+        """Structurally valid PNG (correct CRCs, non-empty IDAT) whose IDAT
+        is garbage must fail full validation via the decode layer."""
+        d = make_theme(self.root, bg_name="0-x.png", bg_bytes=corrupt_payload_png())
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("not a valid image" in e and "0-x.png" in e for e in errs),
+                        f"expected decode failure: {errs}")
+
+    def test_corrupt_payload_jpeg_fails(self):
+        d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=corrupt_payload_jpeg())
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("not a valid image" in e for e in errs),
+                        f"expected decode failure: {errs}")
+
+    def test_corrupt_payload_gif_fails(self):
+        d = make_theme(self.root, bg_name="0-x.gif", bg_bytes=corrupt_payload_gif())
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("not a valid image" in e for e in errs),
+                        f"expected decode failure: {errs}")
+
+    def test_corrupt_payload_webp_fails(self):
+        d = make_theme(self.root, bg_name="0-x.webp", bg_bytes=corrupt_payload_webp())
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("not a valid image" in e for e in errs),
+                        f"expected decode failure: {errs}")
+
+    def test_corrupt_payload_preview_fails(self):
+        d = make_theme(self.root, files={"preview.png": corrupt_payload_png(1800, 1012)})
+        errs = errors_of(self.rep(d))
+        self.assertTrue(any("preview.png" in e for e in errs),
+                        f"expected preview decode failure: {errs}")
+
+    # -- real repository assets must fully decode ------------------------------
+
+    def test_hermes_bloodline_wallpaper_fully_decodes(self):
+        p = REPO / "themes" / "hermes-bloodline" / "backgrounds" / "0-hermes-bloodline.png"
+        im = PIL.Image.open(p)
+        im.load()
+        self.assertEqual(im.format, "PNG")
+        self.assertEqual(im.size, (1672, 941))
+
+    def test_hermes_bloodline_preview_fully_decodes(self):
+        p = REPO / "themes" / "hermes-bloodline" / "preview.png"
+        im = PIL.Image.open(p)
+        im.load()
+        self.assertEqual(im.format, "PNG")
+        self.assertEqual(im.size, (1800, 1012))
+
+    def test_all_real_fixtures_fully_decode(self):
+        for kind, ext, size in [("jpeg", ".jpg", None), ("gif", ".gif", None),
+                                ("bmp", ".bmp", None), ("webp", ".webp", None)]:
+            with self.subTest(kind=kind):
+                im = PIL.Image.open(_io.BytesIO(real_image(kind)))
+                im.load()
+                self.assertEqual(im.format, validate.EXPECTED_FORMAT[ext])
 
     def test_jpeg_without_sos_fails(self):
         d = make_theme(self.root, bg_name="0-x.jpg", bg_bytes=jpeg_bytes(640, 480, with_scan=False))

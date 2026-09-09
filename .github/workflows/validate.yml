@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pinned validator dependencies
+        run: python3 -m pip install -r requirements-validator.txt
       - name: Validator regression tests
         run: python3 -m unittest discover -s tests -v
       - name: Run repository validator

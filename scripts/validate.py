@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Theme and repository validator for awesome-omarchy-themes.
 
-Deterministic gate for theme PRs. stdlib-only; no Omarchy install required.
+Deterministic gate for theme PRs. Requires the pinned validator dependencies
+(Pillow — see requirements-validator.txt); no Omarchy install required.
 Exit 0 = pass. CI runs the unit tests (tests/) and then this file on every PR.
 
 Theme-level checks (per themes/<slug>/):
@@ -32,6 +33,21 @@ import sys
 import tomllib
 import zlib
 from pathlib import Path
+
+try:
+    import PIL.Image
+    import PIL.ImageFile
+    import PIL.ImageSequence
+except ImportError as _exc:  # hard dependency: the validator verifies decodability
+    print(
+        "FATAL: Pillow is required by the validator (real-decode verification layer).\n"
+        "Install it with:  python3 -m pip install -r requirements-validator.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(2) from _exc
+
+# Never tolerate truncated images silently.
+PIL.ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 REPO = Path(__file__).resolve().parent.parent
 THEMES_DIR_NAME = "themes"
@@ -473,6 +489,43 @@ def probe_image(data: bytes, ext: str) -> tuple[str, int, int]:
     return fmt, width, height
 
 
+# ---------------------------------------------------------------- decode ----
+
+EXPECTED_FORMAT = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".gif": "GIF", ".bmp": "BMP", ".webp": "WEBP"}
+
+
+def verify_decodable(data: bytes, ext: str, structural_dims: tuple[int, int]) -> str:
+    """Force a real decode with Pillow. Returns Pillow's format string.
+
+    Raises ValueError with a clear message on identification failure, decode
+    failure, format/extension mismatch, or dimension disagreement with the
+    structural parser. Animated images are fully frame-decoded.
+    """
+    import io
+
+    expected = EXPECTED_FORMAT.get(ext)
+    if expected is None:
+        raise ValueError(f"unsupported extension {ext!r}")
+    try:
+        im = PIL.Image.open(io.BytesIO(data))
+    except Exception as e:
+        raise ValueError(f"Pillow cannot identify the image: {type(e).__name__}: {e}") from e
+    if im.format != expected:
+        raise ValueError(f"extension {ext} declares {expected} but the file is {im.format}")
+    try:
+        for frame in PIL.ImageSequence.Iterator(im):
+            frame.load()  # force pixel decode of every frame
+    except Exception as e:
+        raise ValueError(f"Pillow cannot decode the image data: {type(e).__name__}: {e}") from e
+    pw, ph = im.size
+    sw, sh = structural_dims
+    if (pw, ph) != (sw, sh):
+        raise ValueError(
+            f"dimension disagreement: container says {sw}x{sh}, decoder says {pw}x{ph}"
+        )
+    return str(im.format)
+
+
 # ---------------------------------------------------------------- themes ----
 
 def srgb_to_lin(c: float) -> float:
@@ -598,9 +651,11 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
             if size > MAX_BG_BYTES:
                 rep.error(f"background exceeds 8 MB: {p.name} ({size // 1024} KB)")
             try:
-                fmt, w, h = probe_image(p.read_bytes(), ext)
+                data = p.read_bytes()
+                fmt, w, h = probe_image(data, ext)
+                verify_decodable(data, ext, (w, h))
                 if size <= MAX_BG_BYTES:
-                    rep.note(f"background {p.name}: {fmt} {w}x{h}, {size // 1024} KB")
+                    rep.note(f"background {p.name}: {fmt} {w}x{h}, {size // 1024} KB (decoded)")
             except ValueError as e:
                 rep.error(f"background is not a valid image: {p.name}: {e}")
 
@@ -610,9 +665,11 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
         if size > MAX_PREVIEW_BYTES:
             rep.error(f"preview.png exceeds 2 MB ({size // 1024} KB); quantize to <=256 colors")
         try:
-            w, h = _png_info(preview.read_bytes(), require_complete=True)
+            data = preview.read_bytes()
+            w, h = _png_info(data, require_complete=True)
             if (w, h) != PREVIEW_SIZE:
                 rep.error(f"preview.png must be {PREVIEW_SIZE[0]}x{PREVIEW_SIZE[1]}, got {w}x{h}")
+            verify_decodable(data, ".png", (w, h))
         except ValueError as e:
             rep.error(f"preview.png is not a valid complete PNG: {e}")
 
