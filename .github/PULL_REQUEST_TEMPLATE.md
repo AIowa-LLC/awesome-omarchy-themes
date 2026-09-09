@@ -4,6 +4,7 @@
 
 ## Checklist
 
+- [ ] `python3 scripts/validate.py` exits 0 (CI enforces this)
 - [ ] `colors.toml` parses as valid TOML
 - [ ] Directory name is a lowercase kebab-case slug
 - [ ] Foreground and accent colors are ≥ 3:1 contrast against `background` (ratios listed below)
