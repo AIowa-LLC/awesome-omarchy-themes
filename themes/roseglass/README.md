@@ -23,7 +23,7 @@ The ANSI set is light-mode calibrated: normal colors deepened, bright variants d
 | muted (warm greige) | `#7a6a6b` | 4.58:1 |
 | selection (rose tint) | `#efcdd4` | — |
 
-All named and bright colors hold ≥ 4.89:1 against `background`: red `#9c2f3c` 6.52:1, yellow (amber) `#8a621a` 4.89:1, orange `#a1511f` 5.27:1, green `#4a6e33` 5.27:1, cyan `#1f6a6e` 5.62:1, blue `#3a5580` 6.74:1, magenta `#7c3d78` 6.72:1, brown (cocoa) `#6e4a2c` 5.77:1. The surface ramp: `#faf1e7` → `#f6ecdf` → `#f0e5d8` → `#e4d6c6`, with the rose-tinted selection between them.
+All named and bright colors hold ≥ 4.89:1 against `background`: red `#9c2f3c` 6.52:1, yellow (amber) `#8a621a` 4.89:1, orange `#a1511f` 5.06:1, green `#4a6e33` 5.27:1, cyan `#1f6a6e` 5.62:1, blue `#3a5580` 6.74:1, magenta `#7c3d78` 6.72:1, brown (cocoa) `#6e4a2c` 7.02:1. The surface ramp: `#faf1e7` → `#f6ecdf` → `#f0e5d8` → `#e4d6c6`, with the rose-tinted selection between them.
 
 ## What ships
 
