@@ -98,6 +98,14 @@ MACHINE_PATH_DOC = ("lives in /ho" + "me/tony/") + "projects\n"
 
 import base64
 
+# Optional: used only by the decodability cross-check test (skipped without it).
+try:
+    import PIL.Image  # type: ignore
+    HAS_PIL = True
+except ImportError:  # pragma: no cover
+    PIL = None
+    HAS_PIL = False
+
 
 # base64 so the suite stays stdlib-only. Truncation fixtures are derived from
 # these real bytes at runtime.
@@ -404,11 +412,11 @@ class ThemeValidationTests(unittest.TestCase):
         d = make_theme(self.root, bg_name="0-x.png", bg_bytes=png_bytes(100, 100, dup_ihdr=True))
         self.assertTrue(any("duplicate IHDR" in e for e in errors_of(self.rep(d))))
 
+    @unittest.skipUnless(HAS_PIL, "Pillow not installed (optional; CI runners lack it)")
     def test_png_fixture_is_genuinely_valid(self):
         """The synthetic positive PNG fixture must contain real IDAT data."""
-        from PIL import Image  # noqa: F401 — skipped if Pillow unavailable
         import io
-        im = Image.open(io.BytesIO(png_bytes(100, 100)))
+        im = PIL.Image.open(io.BytesIO(png_bytes(100, 100)))
         im.load()
         self.assertEqual(im.size, (100, 100))
 
