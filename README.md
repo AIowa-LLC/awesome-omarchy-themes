@@ -31,6 +31,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`portal-vibes`](themes/portal-vibes/) | dark | Deep navy, electric cobalt, crisp white — Nous Portal dashboard. |
 | [`verdant-signal`](themes/verdant-signal/) | dark | Forest green, emerald, mint — bio-compute garden with red signal. |
 | [`hermachy`](themes/hermachy/) | light | Porcelain, navy-charcoal, cobalt — architectural Omarchy branding. |
+| [`majestic-monolith`](themes/majestic-monolith/) | light | Warm paper, graphite, ruby — brutal editorial monolith. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
