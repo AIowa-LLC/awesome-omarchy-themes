@@ -29,6 +29,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`hermtang`](themes/hermtang/) | dark | Black-plum, lavender, hot magenta — cyberpunk street culture. |
 | [`nous-noir`](themes/nous-noir/) | dark | Ink black, graphite, bone white — museum-noir near-monochrome. |
 | [`portal-vibes`](themes/portal-vibes/) | dark | Deep navy, electric cobalt, crisp white — Nous Portal dashboard. |
+| [`verdant-signal`](themes/verdant-signal/) | dark | Forest green, emerald, mint — bio-compute garden with red signal. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
