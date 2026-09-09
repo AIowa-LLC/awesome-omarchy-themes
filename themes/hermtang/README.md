@@ -48,6 +48,8 @@ omarchy theme set hermtang
 
 Built and verified against Omarchy `4.0.3-1` (quattro-era theming). No hand-written overrides over generated files.
 
-## Credits
+## Credits and license
 
-Wallpaper: cyberpunk street artwork supplied by the repository owner for this collection. Palette derived by the Omarchy Theme Maker and tuned for validation compliance.
+- **Wallpaper** (`backgrounds/0-hermtang.png`): cyberpunk street artwork supplied by the repository owner (Tony Simons / AIowa LLC) for this collection. Dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — copy, modify, and redistribute freely, no attribution required.
+- **Preview** (`preview.png`): a derivative work composed from live captures of the applied theme (wallpaper + shell surfaces + palette terminal); same source artwork, same CC0 1.0 dedication.
+- **Palette**: derived by the Omarchy Theme Maker from the original live theme and tuned for validation compliance (see "Repaired relative to the live original" above).
