@@ -2,11 +2,11 @@
 
 A community collection of themes for [Omarchy](https://omarchy.org) — the batteries-included Hyprland desktop from Basecamp.
 
-Each theme is a self-contained directory with a [`colors.toml`](https://github.com/basecamp/omarchy/blob/quattro/docs/theming.md) palette and its own backgrounds, ready to install into `~/.config/omarchy/themes/` and apply with `omarchy theme set`.
+Each theme is a self-contained directory with a [`colors.toml`](https://github.com/omacom/omarchy/blob/quattro/docs/theming.md) palette and its own backgrounds, ready to install into `~/.config/omarchy/themes/` and apply with `omarchy theme set`.
 
 ## Installing a theme
 
-Omarchy does not ship a remote theme installer yet, so installation is a plain copy:
+Omarchy supports remote theme installation (`omarchy theme install <url>`). This collection nevertheless documents and recommends a plain copy of the individual theme directory — which is why the repo enforces its own stricter color-only safety policy: a copied theme directory stages as trusted local content with no upstream filtering.
 
 ```bash
 git clone https://github.com/AIowa-LLC/awesome-omarchy-themes.git
@@ -35,11 +35,11 @@ A theme directory may contain:
 
 | File | Purpose |
 | --- | --- |
-| `colors.toml` | The palette. Required — this is the theme. |
-| `backgrounds/` | Wallpaper images cycled with `omarchy theme bg next`. |
-| `preview.png` | Thumbnail shown in the theme switcher (optional). |
+| `colors.toml` | Required. 26-key baseline palette (optional current-Omarchy extensions allowed). Every shell surface, terminal, editor, and app theme generates from it. |
+| `backgrounds/` | Required. ≥1 redistributable wallpaper; cycled with `omarchy theme bg next`. |
+| `preview.png` | Optional. Thumbnail for the theme switcher (1800×1012). |
 
-Palettes define `mode`, `accent`, `selection`, `muted`, a `background`/`foreground` ramp, and named colors (`red`, `green`, `blue`, …) plus bright variants. See the [official theming documentation](https://github.com/basecamp/omarchy/blob/quattro/docs/theming.md) for the full key list and staging behavior.
+Palettes define `mode`, `accent`, `selection`, `muted`, a `background`/`foreground` ramp, and named colors (`red`, `green`, `blue`, …) plus bright variants. See the [official theming documentation](https://github.com/omacom/omarchy/blob/quattro/docs/theming.md) for the full key list and staging behavior.
 
 Keep foreground/accent colors at ≥ 3:1 contrast against `background` so terminal and UI text stays readable.
 

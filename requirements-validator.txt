@@ -1,0 +1,4 @@
+# Validator dependencies — pinned exactly, installed by CI and contributors.
+# Pillow provides the real-decoder verification layer (scripts/validate.py):
+# every wallpaper/preview must fully decode, not just parse structurally.
+Pillow==12.3.0

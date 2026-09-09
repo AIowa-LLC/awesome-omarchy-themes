@@ -22,4 +22,4 @@ Include as much of the following as practical:
 
 ## Scope
 
-This repository contains theme definitions (`colors.toml` palettes) and image assets. Issues in the Omarchy desktop itself belong upstream at [basecamp/omarchy](https://github.com/basecamp/omarchy).
+This repository contains theme definitions (`colors.toml` palettes) and image assets. Issues in the Omarchy desktop itself belong upstream at [omacom/omarchy](https://github.com/omacom/omarchy).
