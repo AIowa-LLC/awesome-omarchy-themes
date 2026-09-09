@@ -26,6 +26,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | Theme | Mode | Identity |
 | --- | --- | --- |
 | [`hermes-bloodline`](themes/hermes-bloodline/) | dark | Deep black, bone white, arterial red — brutalist premium editorial. |
+| [`nous-noir`](themes/nous-noir/) | dark | Ink black, graphite, bone white — strict museum-noir monochrome. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
