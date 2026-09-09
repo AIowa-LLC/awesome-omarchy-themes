@@ -1,0 +1,22 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Tooling caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+
+# Local scratch
+*.bak
+*.pre-*
+.tmp/
