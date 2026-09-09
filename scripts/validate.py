@@ -418,7 +418,9 @@ def validate_repo(root: Path | None = None) -> Report:
     if not table_rows and not themes:
         rep.note("no themes yet")
 
-    # hygiene: tracked text files only — same result locally and in CI
+    # hygiene: tracked text files only — same result locally and in CI.
+    # tests/ is exempt by design: its fixtures deliberately contain
+    # secret-shaped and machine-path-shaped strings to exercise this scan.
     text_ext = {".md", ".toml", ".py", ".yml", ".yaml", ".gitignore", ".editorconfig", ".theme"}
     try:
         files = _tracked_files(root)
@@ -426,13 +428,16 @@ def validate_repo(root: Path | None = None) -> Report:
         rep.error(str(e))
         return rep
     for p in files:
+        rel_posix = p.relative_to(root).as_posix()
+        if rel_posix.startswith("tests/"):
+            continue
         if p.suffix.lower() not in text_ext and p.name not in (".gitignore", ".editorconfig", "LICENSE"):
             continue
         try:
             content = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, PermissionError):
             continue
-        rel = p.relative_to(root).as_posix()
+        rel = rel_posix
         for match in SECRET.finditer(content):
             rep.error(f"possible secret in {rel}: {match.group(0)[:12]}…")
         for match in MACHINE_PATH.finditer(content):

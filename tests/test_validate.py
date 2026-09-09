@@ -301,6 +301,17 @@ class RepoValidationTests(unittest.TestCase):
         rep = validate.validate_repo(self.root)
         self.assertTrue(any("possible secret" in e for e in rep.errors))
 
+    def test_tracked_secret_in_test_dir_is_exempt_fixture(self):
+        make_theme(self.root)
+        self.readme_with(["| [`test-theme`](themes/test-theme/) | dark | test |"])
+        git_repo_with_theme(self.root)
+        (self.root / "tests").mkdir(exist_ok=True)
+        (self.root / "tests" / "fixtures.py").write_text("SECRET = 'ghp_1234567890abcdef'\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-qm", "add fixture"], cwd=self.root, check=True, capture_output=True)
+        rep = validate.validate_repo(self.root)
+        self.assertEqual(rep.errors, [], f"tests/ fixtures are exempt by design: {rep.errors}")
+
 
 class PngStructureTests(unittest.TestCase):
     """Direct unit tests for the PNG walker used by preview validation."""
