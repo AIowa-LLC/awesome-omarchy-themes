@@ -16,7 +16,7 @@ The ANSI set is light-mode calibrated: normal colors are deepened and bright var
 | --- | --- | --- |
 | background | `#f5f3ec` | — |
 | foreground (navy-charcoal) | `#1b2a3a` | 13.14:1 |
-| bright_foreground | `#0f1c2b` | 15.28:1 |
+| bright_foreground | `#0f1c2b` | 15.49:1 |
 | accent (cobalt) | `#2e6fe8` | 4.15:1 |
 
 The accent is the artwork's cobalt, tuned for light-surface readability (4.15:1). The surface ramp runs porcelain → warm-gray stops with a cool blue-tinted `selection`. All named and bright colors hold ≥ 3.87:1 against `background`. Cyan (`#177b8a`) and green (`#3c7a3f`) support the semantic set alongside the cobalt lead.

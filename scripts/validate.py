@@ -71,18 +71,11 @@ LEGACY_ALIASES = {
     "fg": "foreground", "dark_fg": "dark_foreground",
     "light_fg": "light_foreground", "bright_fg": "bright_foreground",
 }
-RAMP_DARK = [
+RAMP = [
     "darker_background", "dark_background", "background",
     "lighter_background", "selection",
 ]
-# Light themes (matching Omarchy stock: catppuccin-latte, flexoki-light): the
-# ramp runs from `background` (lightest stop) down to the foregrounds.
-RAMP_LIGHT = [
-    "background", "dark_background", "lighter_background",
-    "darker_background", "selection",
-]
-FG_LADDER_DARK = ["muted", "dark_foreground", "foreground", "light_foreground", "bright_foreground"]
-FG_LADDER_LIGHT = ["muted", "dark_foreground", "light_foreground", "foreground", "bright_foreground"]
+FG_LADDER = ["muted", "dark_foreground", "foreground", "light_foreground", "bright_foreground"]
 BG_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
 
 # This repository's own policy. Omarchy (quattro) drops code-capable files
@@ -623,13 +616,13 @@ def validate_theme(theme_dir: Path, slug: str) -> Report:
         rep.error(f"accent contrast {acc_r:.2f}:1 < 3:1")
     rep.note(f"foreground {fg_r:.2f}:1, accent {acc_r:.2f}:1 vs background")
 
-    order = RAMP_DARK + FG_LADDER_DARK if mode == "dark" else RAMP_LIGHT + FG_LADDER_LIGHT
+    order = RAMP + FG_LADDER
     lums = {k: luminance(data[k]) for k in order}
     seq = [lums[k] for k in order]
     if mode == "dark" and any(b < a for a, b in zip(seq, seq[1:])):
         rep.error("neutral ramp not monotonic (dark: must rise darker_background -> bright_foreground)")
     if mode == "light" and any(b > a for a, b in zip(seq, seq[1:])):
-        rep.error("neutral ramp not monotonic (light: must fall background -> bright_foreground, matching Omarchy stock light themes)")
+        rep.error("neutral ramp not monotonic (light: must fall darker_background -> bright_foreground)")
 
     sel_r = contrast(data["bright_foreground"], data["selection"])
     if sel_r < 3.0:
