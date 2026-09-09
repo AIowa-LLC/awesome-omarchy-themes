@@ -31,7 +31,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`portal-vibes`](themes/portal-vibes/) | dark | Deep navy, electric cobalt, crisp white — Nous Portal dashboard. |
 | [`green-magic`](themes/green-magic/) | dark | Forest black, luminous emerald, signal red — post-training foundry. |
 | [`hermachy`](themes/hermachy/) | light | Porcelain, navy-charcoal, cobalt — architectural Omarchy branding. |
-| [`majestic-monolith`](themes/majestic-monolith/) | light | Warm paper, graphite, ruby — brutal editorial monolith. |
+| [`perfect-computer`](themes/perfect-computer/) | dark | Deep navy, Omarchy green, pale blue-white — the malleable agent OS. |
 | [`nous-dayshift`](themes/nous-dayshift/) | light | Warm white, graphite, Nous cobalt — daylight community ops. |
 | [`roseglass`](themes/roseglass/) | light | Pearl, wine ink, rose glass — soft power, hard systems. |
 
