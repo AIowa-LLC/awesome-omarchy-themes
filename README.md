@@ -34,6 +34,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`perfect-computer`](themes/perfect-computer/) | dark | Deep navy, Omarchy green, pale blue-white — the malleable agent OS. |
 | [`nous-dayshift`](themes/nous-dayshift/) | light | Warm white, graphite, Nous cobalt — daylight community ops. |
 | [`roseglass`](themes/roseglass/) | light | Pearl, wine ink, rose glass — soft power, hard systems. |
+| [`codexy`](themes/codexy/) | light | Porcelain, deep ink, Codex blue — parallel agent build lab. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
