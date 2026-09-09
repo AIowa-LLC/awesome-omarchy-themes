@@ -62,7 +62,8 @@ bright_magenta = "…"
 
 Rules:
 - Hex `#rrggbb` lowercase everywhere; `mode` is the only non-color value.
-- The neutral ramp must be **monotonic by relative luminance**: for dark themes darkest→lightest is `darker_background ≤ dark_background ≤ background ≤ lighter_background ≤ selection ≤ … ≤ bright_foreground` (light themes: reverse). The validator computes WCAG luminances and enforces this.
+- The neutral ramp must be **monotonic by relative luminance** for dark themes: darkest→lightest is `darker_background ≤ dark_background ≤ background ≤ lighter_background ≤ selection ≤ … ≤ bright_foreground`. The validator computes WCAG luminances and enforces this.
+- **Light themes** are validated by luminance **relationships**, not key order (matching current Omarchy stock light themes, which do not share one fixed ordering — `omarchy dev theme-preview` sorts neutrals by luminance): `background` must be the lightest surface stop, `muted` must sit between the surfaces and the primary foregrounds, and `foreground`/`bright_foreground` must be darker than every surface. Check your palette with `omarchy dev theme-preview` — its "Neutral ramp (lightest -> darkest)" listing should show your stops in a sensible falling order.
 - `foreground` and `accent` ≥ 3:1 contrast vs `background` (validator floor). Daily-driver target: foreground ≥ 10:1, accent ≥ 4:1.
 - Deriving from an image? See "Palette derivation" below.
 
