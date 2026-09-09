@@ -1,6 +1,14 @@
 # Contributing to Awesome Omarchy Themes
 
-Thanks for contributing! These guidelines supplement the [organization-wide defaults](https://github.com/AIowa-LLC/.github/blob/main/CONTRIBUTING.md).
+Thanks for contributing! These guidelines supplement the [organization-wide defaults](https://github.com/AIowa-LLC/.github/blob/main/CONTRIBUTING.md). Autonomous coding agents should follow [AGENTS.md](AGENTS.md) instead — it is the operational contract for agent work in this repo.
+
+## Validate before opening a PR
+
+```bash
+python3 scripts/validate.py        # all themes + repo checks; exit 0 = ready
+```
+
+CI runs the same command on every PR.
 
 ## Theme structure
 
