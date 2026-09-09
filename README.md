@@ -21,6 +21,14 @@ omarchy theme set <theme-name>
 
 Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 
+## Themes
+
+| Theme | Mode | Identity |
+| --- | --- | --- |
+| [`hermes-bloodline`](themes/hermes-bloodline/) | dark | Deep black, bone white, arterial red — brutalist premium editorial. |
+
+Each theme lists its palette contrast ratios and components in its own README.
+
 ## What is in a theme?
 
 A theme directory may contain:
