@@ -10,7 +10,7 @@ A bio-compute editorial dark theme: near-black forest green base, emerald and sa
 | --- | --- | --- |
 | background | `#0a1610` | — |
 | foreground (pale mint) | `#e3ecdd` | 15.25:1 |
-| bright_foreground | `#f7fbf2` | 17.87:1 |
+| bright_foreground | `#f7fbf2` | 17.65:1 |
 | accent (signal red) | `#e0474f` | 4.57:1 |
 
 The accent is the artwork's visor crimson, tuned to stay a *signal* — visible on active borders, urgent states, and links — while the green family leads every surface. The neutral ramp runs `#040a06 → #27402e` in forest/emerald tones so panels, bars, and popups stay botanical. All named and bright colors hold ≥ 4.21:1 against `background`.
