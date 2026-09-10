@@ -1,0 +1,83 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and release notes
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must be a SemVer core version (for example 0.1.0), got: $version" >&2
+            exit 1
+          fi
+          tag="v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          VERSION_VALUE="$version" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION_VALUE"]
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          marker = f"## [{version}]"
+          start = changelog.find(marker)
+          if start < 0:
+              raise SystemExit(f"CHANGELOG.md has no {marker} section")
+          body_start = changelog.find("\n", start) + 1
+          end = changelog.find("\n## [", body_start)
+          if end < 0:
+              end = changelog.find("\n[Unreleased]:", body_start)
+          if end < 0:
+              end = len(changelog)
+          notes = changelog[body_start:end].strip()
+          if not notes:
+              raise SystemExit(f"CHANGELOG.md section for {version} is empty")
+          Path("/tmp/release-notes.md").write_text(notes + "\n", encoding="utf-8")
+          PY
+
+      - name: Create annotated tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG is already published; nothing to do."
+            exit 0
+          fi
+
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Awesome Omarchy Themes $TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file /tmp/release-notes.md
