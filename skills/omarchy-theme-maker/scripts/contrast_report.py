@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """contrast_report.py -- WCAG contrast report for an Omarchy colors.toml.
 
-Computes and prints the full cross-product of every ink color against every
+Computes and prints the full cross-product of every text/ink role against every
 surface color, plus the specifically mandated floors, using WCAG relative
 luminance. Exits non-zero when a mandated floor fails, so it can gate CI or a
 theme-building agent.
@@ -24,20 +24,23 @@ Only stdlib (tomllib) is required. Works on any machine -- no Omarchy needed.
 from __future__ import annotations
 
 import argparse
+import re
+import signal
 import sys
 import tomllib
 from pathlib import Path
 
 SURFACES = [
     "background", "dark_background", "darker_background",
-    "lighter_background", "selection", "muted",
+    "lighter_background", "selection",
 ]
 INKS = [
-    "foreground", "dark_foreground", "light_foreground", "bright_foreground",
-    "accent", "red", "yellow", "orange", "green", "cyan", "blue",
-    "magenta", "brown", "bright_red", "bright_yellow", "bright_green",
-    "bright_cyan", "bright_blue", "bright_magenta",
+    "muted", "foreground", "dark_foreground", "light_foreground",
+    "bright_foreground", "accent", "red", "yellow", "orange", "green",
+    "cyan", "blue", "magenta", "brown", "bright_red", "bright_yellow",
+    "bright_green", "bright_cyan", "bright_blue", "bright_magenta",
 ]
+HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def srgb_to_lin(c: float) -> float:
@@ -46,6 +49,8 @@ def srgb_to_lin(c: float) -> float:
 
 
 def luminance(hexcol: str) -> float:
+    if not isinstance(hexcol, str) or not HEX.fullmatch(hexcol):
+        raise ValueError(f"invalid #rrggbb color: {hexcol!r}")
     r, g, b = (int(hexcol[i:i + 2], 16) for i in (1, 3, 5))
     return 0.2126 * srgb_to_lin(r) + 0.7152 * srgb_to_lin(g) + 0.0722 * srgb_to_lin(b)
 
@@ -67,26 +72,37 @@ def main() -> int:
                     help="Mandated floors for foreground/accent vs background and "
                          "bright_foreground vs selection (default: 3 3 3)")
     ap.add_argument("--quiet", action="store_true",
-                    help="Print only failures and the summary line")
+                    help="Print only failures and the final summary line")
     args = ap.parse_args()
 
     p = args.colors.expanduser().resolve()
     if not p.is_file():
-        sys.exit(f"not a file: {p}")
+        print(f"not a file: {p}", file=sys.stderr)
+        return 2
     try:
         data = tomllib.loads(p.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as e:
-        sys.exit(f"{p} is not valid TOML: {e}")
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as e:
+        print(f"cannot read valid TOML from {p}: {e}", file=sys.stderr)
+        return 2
 
     missing = [k for k in ["mode", *SURFACES, *INKS] if k not in data]
     if missing:
-        sys.exit(f"{p} is missing keys: {', '.join(missing)}")
+        print(f"{p} is missing keys: {', '.join(missing)}", file=sys.stderr)
+        return 2
+
+    try:
+        for key in [*SURFACES, *INKS]:
+            luminance(data[key])
+    except ValueError as e:
+        print(f"{p}: {e}", file=sys.stderr)
+        return 2
 
     fg_floor, acc_floor, sel_floor = args.floor
     failures = 0
 
-    print(f"# contrast report: {p.name} (mode={data['mode']})")
-    print()
+    if not args.quiet:
+        print(f"# contrast report: {p.name} (mode={data['mode']})")
+        print()
 
     mandated = [
         ("foreground vs background", "foreground", "background", fg_floor),
@@ -97,23 +113,26 @@ def main() -> int:
         r = contrast(data[ink], data[surf])
         ok = r >= floor
         failures += 0 if ok else 1
-        print(f"{'PASS' if ok else 'FAIL'}  {label:38s} {r:6.2f}:1  (floor {floor:.0f}:1)")
+        if not args.quiet or not ok:
+            print(f"{'PASS' if ok else 'FAIL'}  {label:38s} {r:6.2f}:1  (floor {floor:.0f}:1)")
 
-    print()
-    print(f"{'ink':17s} " + " ".join(f"{s[:9]:>9s}" for s in SURFACES))
     minimums: dict[str, float] = {}
+    if not args.quiet:
+        print()
+        print(f"{'ink':17s} " + " ".join(f"{s[:9]:>9s}" for s in SURFACES))
     for ink in INKS:
         row = [contrast(data[ink], data[surf]) for surf in SURFACES]
         minimums[ink] = min(row)
         if not args.quiet:
             print(f"{ink:17s} " + " ".join(f"{v:9.2f}" for v in row))
 
-    print()
-    print("minimum ratio per ink (across all surfaces):")
-    for ink in INKS:
-        print(f"  {ink:17s} {minimums[ink]:6.2f}:1")
+    if not args.quiet:
+        print()
+        print("minimum ratio per ink (across all surfaces):")
+        for ink in INKS:
+            print(f"  {ink:17s} {minimums[ink]:6.2f}:1")
+        print()
 
-    print()
     if failures:
         print(f"RESULT: FAIL ({failures} mandated floor(s) not met)")
         return 1
@@ -122,6 +141,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import signal
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # die quietly when piped to head/less
     raise SystemExit(main())
