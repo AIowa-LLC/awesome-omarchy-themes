@@ -85,6 +85,12 @@ python3 skills/omarchy-theme-maker/scripts/palette_to_theme.py artwork.png --nam
 python3 skills/omarchy-theme-maker/scripts/contrast_report.py themes/my-theme/colors.toml
 ```
 
+The contrast report follows this repo's validator semantics: surfaces are the
+background ramp plus `selection`; text/ink roles include `muted`, the foreground
+ladder, accent, and all ANSI colors. That makes muted/background and ANSI/surface
+ratios directly usable in a theme README instead of treating `muted` as a
+surface and omitting its text contrast.
+
 ## Running validation
 
 ```bash
