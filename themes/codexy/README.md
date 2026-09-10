@@ -50,7 +50,7 @@ The accent is the artwork's Codex blue deepened to `#0f5fd4` for strong on-porce
 | bright_blue | `#0f4bab` | 7.34:1 |
 | bright_magenta | `#6a2f96` | 7.80:1 |
 
-Every normal and bright ANSI color holds ≥ 4.43:1 against `background` and ≥ 3.70:1 even against the darkest surface (`selection`). Selected text (`bright_foreground` vs `selection`) is 14.47:1.
+Every normal and bright ANSI color holds ≥ 4.43:1 against `background` and ≥ 3.66:1 even against the darkest surface (`selection`). Selected text (`bright_foreground` vs `selection`) is 14.47:1.
 
 ## What ships
 
