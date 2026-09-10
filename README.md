@@ -40,6 +40,10 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 
 Each theme lists its palette contrast ratios and components in its own README.
 
+## Build Your Own Theme
+
+This repo ships the same [Omarchy Theme Maker](skills/omarchy-theme-maker/) workflow that created the collection — palette extraction from source artwork, hand-tuning, WCAG contrast checks, real preview capture, and the validator-gated PR flow. Hand [`skills/omarchy-theme-maker/SKILL.md`](skills/omarchy-theme-maker/SKILL.md) to your coding agent, or follow it manually; see the skill's [README](skills/omarchy-theme-maker/README.md) for the friendly overview.
+
 ## What is in a theme?
 
 A theme directory may contain:
