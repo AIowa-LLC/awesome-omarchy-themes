@@ -36,6 +36,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`roseglass`](themes/roseglass/) | light | Pearl, wine ink, rose glass — soft power, hard systems. |
 | [`codexy`](themes/codexy/) | light | Porcelain, deep ink, Codex blue — parallel agent build lab. |
 | [`claudey`](themes/claudey/) | light | Warm ivory, deep ink, terracotta — computational research atelier. |
+| [`tonarchy`](themes/tonarchy/) | light | Marble white, deep ink, signal red, gold — luxury Hermes chaos. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
