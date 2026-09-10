@@ -79,7 +79,7 @@ Keep foreground/accent colors at >= 3:1 contrast against `background` so termina
 ## Compatibility and safety
 
 - The collection targets the current Omarchy `colors.toml` theme model documented on the upstream `quattro` branch.
-- This repository intentionally ships color/theme assets only. It rejects executable theme code, terminal-config overrides, and full `shell.toml` overrides even where upstream Omarchy may accept them.
+- Themes in this collection intentionally ship color/theme assets only. The repository rejects executable theme code, terminal-config overrides, and full `shell.toml` overrides even where upstream Omarchy may accept them.
 - Every committed wallpaper must be redistributable and every theme README must state its source and redistribution terms.
 - Tribute themes are unofficial community work. Third-party names, logos, and marks remain with their respective owners; no endorsement or affiliation is claimed.
 - `scripts/validate.py` enforces palette structure, contrast floors, asset integrity, README index sync, and repository hygiene. CI runs the validator regression suite and the full repository validator on every PR.
