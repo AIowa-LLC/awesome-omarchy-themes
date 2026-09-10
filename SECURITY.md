@@ -22,4 +22,6 @@ Include as much of the following as practical:
 
 ## Scope
 
-This repository contains theme definitions (`colors.toml` palettes) and image assets. Issues in the Omarchy desktop itself belong upstream at [omacom/omarchy](https://github.com/omacom/omarchy).
+This repository contains Omarchy theme definitions, image assets, validator tooling, documentation, and the reusable Omarchy Theme Maker skill. Security issues in those repository-owned components should be reported here.
+
+Issues in the Omarchy desktop itself belong upstream at [omacom/omarchy](https://github.com/omacom/omarchy).
