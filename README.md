@@ -2,6 +2,12 @@
 
 ![Awesome Omarchy Themes](assets/awesome-omarchy-themes.png)
 
+[![Omarchy](https://img.shields.io/badge/Omarchy-theme%20collection-9ECE6A?style=flat-square)](https://omarchy.org)
+[![X: @tonysimons_](https://img.shields.io/badge/X-%40tonysimons__-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/tonysimons_)
+[![Fund via X Money](https://img.shields.io/badge/X%20Money-Fund%20the%20project-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/i/money/pay/tonysimons_)
+[![validate](https://github.com/AIowa-LLC/awesome-omarchy-themes/actions/workflows/validate.yml/badge.svg)](https://github.com/AIowa-LLC/awesome-omarchy-themes/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+
 A community collection of themes for [Omarchy](https://omarchy.org) — the batteries-included Hyprland desktop from Basecamp.
 
 Each theme is a self-contained directory with a [`colors.toml`](https://github.com/omacom/omarchy/blob/quattro/docs/theming.md) palette and its own backgrounds, ready to install into `~/.config/omarchy/themes/` and apply with `omarchy theme set`.
