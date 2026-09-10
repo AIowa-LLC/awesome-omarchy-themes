@@ -1,5 +1,7 @@
 # Awesome Omarchy Themes
 
+![Awesome Omarchy Themes](assets/awesome-omarchy-themes.png)
+
 A community collection of themes for [Omarchy](https://omarchy.org) — the batteries-included Hyprland desktop from Basecamp.
 
 Each theme is a self-contained directory with a [`colors.toml`](https://github.com/omacom/omarchy/blob/quattro/docs/theming.md) palette and its own backgrounds, ready to install into `~/.config/omarchy/themes/` and apply with `omarchy theme set`.
@@ -65,3 +67,5 @@ New themes and palette improvements are welcome — see [CONTRIBUTING.md](CONTRI
 ## License
 
 [MIT](LICENSE)
+
+Banner artwork (`assets/awesome-omarchy-themes.png`): original composition supplied by the repository owner; the Omarchy name and logos, the Arch Linux and Tux marks, and any other brand elements it depicts remain subject to their respective owners' rights — this is an unofficial community project with no endorsement or affiliation claimed.
