@@ -49,7 +49,16 @@ is not a safety mechanism.
    empty workspace BEFORE spawning anything - a newly spawned window lands on
    the focused workspace, and moving it later is exactly the focus-dependent
    operation to avoid.
-2. **Spawn a self-terminating themed terminal.** Run it in the background so
+2. **If you want floating/exact geometry, register the window rule now, before
+   spawning the terminal.** Rules apply only to NEW windows:
+
+   ```bash
+   hyprctl repl 'local r = hl.window_rule{class="theme-preview-<slug>", size={1400,800}, position={100,100}, floating=true} return "ok"'
+   ```
+
+   If you do not need exact geometry, skip this step. Do not try to repair
+   geometry later with focus-dependent float/move/resize dispatchers.
+3. **Spawn a self-terminating themed terminal.** Run it in the background so
    it survives independently, with a distinctive app-id, a bounded lifetime,
    and its PID recorded:
 
@@ -61,20 +70,12 @@ is not a safety mechanism.
 
    The bounded `sleep` means the window cleans itself up even if later steps
    fail - no `window.kill()` needed on the happy path.
-3. **Verify the spawn.** `hyprctl clients -j` - find the client whose
-   `class`/`app-id` is `theme-preview-<slug>`, note its `address` and that it
+4. **Verify the spawn.** `hyprctl clients -j` - find the client whose
+   `class`/`app-id` is `theme-preview-<slug>`, note its `address` and confirm it
    sits on the expected workspace. If it is not uniquely identifiable, stop and
-   go composite.
-4. **Optionally float it via a pre-registered rule.** Rules apply to NEW
-   windows only, so register before spawning:
-
-   ```bash
-   hyprctl repl 'local r = hl.window_rule{class="theme-preview-<slug>", size={1400,800}, position={100,100}, floating=true} return "ok"'
-   ```
-
-   If the window still comes up tiled, do not fight geometry with
-   focus-dependent float/move/resize calls - capture it full-bleed and
-   composite instead.
+   go composite. If a pre-registered floating rule did not produce the geometry
+   you expected, do not fight it with focus-dependent float/move/resize calls -
+   capture it full-bleed and composite instead.
 5. **Capture the monitor**, not the window:
 
    ```bash
