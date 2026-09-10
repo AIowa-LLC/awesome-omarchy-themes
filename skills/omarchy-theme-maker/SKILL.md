@@ -1,7 +1,7 @@
 ---
 name: omarchy-theme-maker
 description: Build an Omarchy theme from any image - palette extraction, hand-tuning, WCAG contrast checks, wallpaper, real preview capture, and a PR-ready theme directory.
-version: 1.0.0
+version: 1.0.1
 author: AIowa LLC
 license: MIT
 platforms: [linux]
@@ -174,11 +174,12 @@ you are not working from a clone.
    python3 skills/omarchy-theme-maker/scripts/contrast_report.py themes/<slug>/colors.toml
    ```
 
-   It prints the full cross-product (all inks x every surface) and exits
-   non-zero if a mandated floor fails. Paste its output into the theme README
-   and the PR body - a minimum ratio derived from a partial spot-check ships a
-   stale number that independent recomputation later overturns. With Omarchy
-   available, cross-check the ramp ordering with
+   It prints the full cross-product of text/ink roles (`muted`, foregrounds,
+   accent, ANSI colors) against actual surfaces (background ramp + `selection`)
+   and exits non-zero if a mandated floor fails. Paste its output into the theme
+   README and the PR body - a minimum ratio derived from a partial spot-check
+   ships a stale number that independent recomputation later overturns. With
+   Omarchy available, cross-check the ramp ordering with
    `omarchy dev theme-preview themes/<slug>/colors.toml --no-osc`.
 7. **Backgrounds.** Copy the artwork into `themes/<slug>/backgrounds/` with an
    indexed name (`0-<short-name>.<ext>`) - `omarchy theme set` sorts
@@ -298,66 +299,39 @@ user's live browser instead. These rules are therefore mandatory, not advisory:
 ## Licensing, branding, and trademarks
 
 - Only commit images you have the right to redistribute, and **state the source
-  and redistribution license** in the theme README and the PR. AI-generated art
-  with no third-party claim is fine - a CC0 dedication by the supplier is this
-  repo's default.
-- **Tribute artwork containing third-party marks** (Omarchy, Codex/OpenAI,
-  Claude/Anthropic, any brand): CC0-dedicate only the wallpaper composition
-  supplied by the repository owner and explicitly carve the brand name,
-  logos, and marks out of that dedication - they remain with their owners, the
-  theme is an unofficial tribute, and no endorsement or affiliation is claimed.
-  **Never state that the marks themselves are CC0.** The preview derivative and
-  the PR body carry the same caveat. Inspect the brand's current official
-  usage guidance before writing licensing language rather than assuming.
-- Do not make speculative licensing claims about anything else either: if you
-  cannot establish the rights, do not ship the file.
-
-## Pitfalls
-
-- Never write `/usr/share/omarchy/` - package updates wipe it. User themes live
-  in `~/.config/omarchy/themes/`.
-- Do not `git init` or clone into a theme directory under
-  `~/.config/omarchy/themes/`: a `.git` dir makes Omarchy treat it as an
-  untrusted installed theme and filter out `*.lua`, terminal configs, and
-  `vscode.json` at staging.
-- A multi-theme collection repo cannot be installed with
-  `omarchy theme install` (it clones the whole repo as ONE theme, named from
-  the URL); the correct path is clone +
-  `cp -r themes/<name> ~/.config/omarchy/themes/` (a plain copy has no `.git`,
-  so it stages in full and unfiltered).
-- Contrast auto-adjustment shifts lightness (not hue) of accent/named colors
-  away from the exact source pixels - re-edit `colors.toml` if pixel fidelity
-  matters more than readability.
-- Hand-written files always win: templates never overwrite an existing
-  `shell.toml`/`hyprland.lua` in a theme dir.
-- Scope discipline: a theme PR's diff is exactly the theme directory plus one
-  README table row - verify with
-  `git diff origin/main...HEAD --name-status` before pushing. Repo-level issues
-  found along the way get reported in the PR body, never fixed in a theme PR.
-
-## Verification
-
-- After `omarchy theme set <slug>`, `omarchy theme current` must print the new
-  slug.
-- `scripts/contrast_report.py` exits 0 (mandated floors met) and its output is
-  what the theme README documents.
-- The repo gate passes: `python3 -m unittest discover -s tests` and
-  `python3 scripts/validate.py` both exit 0.
-- The preview is a real capture of the applied theme (or a composite of two
-  real captures), never fabricated UI.
+  and redistribution license** in the theme README and PR body.
+- A generated composition can be licensed by its creator/supplier, but that
+  grant does **not** magically relicense third-party names, logos, or marks
+  embedded in it. If brand assets appear, carve them out explicitly: they stay
+  with their respective owners.
+- For unofficial tribute themes, say so: no ownership, endorsement,
+  sponsorship, or official affiliation claimed.
+- A preview derived from a wallpaper carries the same third-party-mark caveats
+  as that wallpaper.
+- Do not infer or invent licenses for upstream logos/assets. If redistribution
+  rights are unclear, stop and resolve them before committing the asset.
 
 ## Reference
 
-- Official theming doc (palette keys, staging flow, template placeholders,
-  installed-theme denylist):
-  https://github.com/omacom/omarchy/blob/quattro/docs/theming.md - themes
-  destined for `omarchy theme install` should ship ONLY color files
-  (`colors.toml`, `shell.*.toml`, `icons.theme`, `keyboard.rgb`, previews,
-  backgrounds); `.lua`/terminal configs/`vscode.json` are dropped at staging.
-- Stock theme calibration (read-only, safe to consult):
-  `/usr/share/omarchy/themes/tokyo-night/colors.toml` (dark) and
-  `/usr/share/omarchy/themes/catppuccin-latte/colors.toml` (light).
-- Upstream tracks a built-in version of the palette-from-image idea at
-  omacom/omarchy#8745.
-- The extraction script's HSL targets were calibrated against those two stock
-  themes; the contrast math is plain WCAG relative luminance.
+### Stock themes used for calibration
+
+- Dark: `/usr/share/omarchy/themes/tokyo-night`
+- Light: `/usr/share/omarchy/themes/catppuccin-latte`
+
+### Theme structure
+
+```
+<theme>/
+├── colors.toml        # required
+├── backgrounds/       # required (>=1 redistributable indexed image)
+├── preview.png        # recommended, 1800x1012
+├── icons.theme        # optional, one stock Yaru-* name
+└── README.md          # recommended, palette + credits/license
+```
+
+### Notes
+
+- Theme slugs: lowercase kebab-case, e.g. `my-theme`.
+- Background names: indexed, e.g. `0-main.png`, `1-alt.webp`.
+- `palette_to_theme.py` is intentionally conservative and incomplete as an
+  aesthetic tool; it is a starting point, never the final authority.
