@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Security reports
+    url: https://github.com/AIowa-LLC/awesome-omarchy-themes/security/policy
+    about: Report suspected vulnerabilities privately; do not post sensitive details in a public issue.
   - name: Omarchy documentation
     url: https://github.com/omacom/omarchy/blob/quattro/docs/theming.md
-    about: Official theming reference — palette keys and staging behavior.
+    about: Official theming reference - palette keys and staging behavior.
