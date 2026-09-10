@@ -86,9 +86,9 @@ These are keys current Omarchy (quattro) stock themes use for richer border/surf
 - The validator verifies wallpapers are real, complete images (signature, dimensions, truncation, extension match) — a corrupt or mislabeled file fails the gate.
 - `preview.png`: 1800×1012 (stock switcher format), complete valid PNG, target 300–800 KB (quantize to ≤256 colors if heavier). Content: wallpaper + themed shell surfaces; never fabricated UI.
 
-## 3. Palette derivation (Hermes)
+## 3. Palette derivation
 
-Use the `omarchy-theme-maker` skill and its `palette_to_theme.py` for the first pass, then review and hand-tune: quantization picks *dominant* pixels, not *identity* colors (it chose green for the red/black Hermes Bloodline poster). Verify the ramp and contrast with `omarchy dev theme-preview <colors.toml> --no-osc` when Omarchy is available; otherwise rely on `scripts/validate.py`, which recomputes the same ratios.
+Derive the first pass with the repository's own [Omarchy Theme Maker skill](../skills/omarchy-theme-maker/SKILL.md) (`scripts/palette_to_theme.py` — see the skill's [README](../skills/omarchy-theme-maker/README.md) for prerequisites), then review and hand-tune: quantization picks *dominant* pixels, not *identity* colors (it chose green for the red/black Hermes Bloodline poster). Hermes users can load the installed skill (`skill_view(name="omarchy-theme-maker")`) instead of reading the repo copy; the workflow is identical. Verify the ramp and contrast with `omarchy dev theme-preview <colors.toml> --no-osc` when Omarchy is available; otherwise rely on `scripts/validate.py`, which recomputes the same ratios — and on the skill's `contrast_report.py` for the full ink × surface cross-product.
 
 ## 4. Preview capture (Omarchy installed)
 

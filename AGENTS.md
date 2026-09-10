@@ -74,7 +74,7 @@ Contrast floors (WCAG-computed): `foreground` and `accent` ≥ 3:1 against `back
 
 ## Hermes agents specifically
 
-Load the `omarchy-theme-maker` skill (`skill_view(name="omarchy-theme-maker")`) and use its script to derive a first-pass palette from the source image, then **hand-tune to the artwork's actual identity** — auto-extraction quantizes dominant pixels and can pick a wrong accent (it once chose green for a red/black poster). Full workflow including preview capture: [docs/theme-creation.md](docs/theme-creation.md).
+Load the installed `omarchy-theme-maker` skill (`skill_view(name="omarchy-theme-maker")`) when available. Either way — Hermes or any other agent — this repository owns the canonical public copy of that skill: [`skills/omarchy-theme-maker/SKILL.md`](skills/omarchy-theme-maker/SKILL.md). Use its script to derive a first-pass palette from the source image, then **hand-tune to the artwork's actual identity** — auto-extraction quantizes dominant pixels and can pick a wrong accent (it once chose green for a red/black poster). Full workflow including preview capture: [docs/theme-creation.md](docs/theme-creation.md).
 
 ## When in doubt
 
