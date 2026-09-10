@@ -35,6 +35,7 @@ Revert to a stock theme at any time with `omarchy theme set <stock-theme-name>`.
 | [`nous-dayshift`](themes/nous-dayshift/) | light | Warm white, graphite, Nous cobalt — daylight community ops. |
 | [`roseglass`](themes/roseglass/) | light | Pearl, wine ink, rose glass — soft power, hard systems. |
 | [`codexy`](themes/codexy/) | light | Porcelain, deep ink, Codex blue — parallel agent build lab. |
+| [`claudey`](themes/claudey/) | light | Warm ivory, deep ink, terracotta — computational research atelier. |
 
 Each theme lists its palette contrast ratios and components in its own README.
 
